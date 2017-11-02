@@ -1,0 +1,25 @@
+# bash completion for szradm
+#
+# szradm option [params]
+# szradm command [params]
+#
+_szradm()
+{
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="-q -h -m -r -n -f -e -o -s --queryenv --msgsnd --repair --reinit --name --msgfile --endpoint --queue --help --qa-report"
+    opts2="list-virtualhosts list-role-params list-roles get-https-certificate get-latest-version list-ebs-mountpoints list-scripts mark-as-unhandled list-messages message-details"
+
+    if [[ ${cur} == -* ]] ; then
+        COMPREPLY=( $(compgen -W "${opts}" --  ${cur}) )
+        return 0
+    fi
+
+    if [[ ${cur} == * ]] ; then
+        COMPREPLY=( $(compgen -W "${opts2}"  ${cur}) )
+        return 0
+    fi
+}
+complete -F _szradm szradm

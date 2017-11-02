@@ -1,0 +1,17 @@
+/var/log/mongodb/mongodb.*.log {
+    maxsize 10M
+    daily
+    rotate 7
+    nodelaycompress
+    compress
+    daily
+    missingok
+    notifempty
+    sharedscripts
+    copy
+    postrotate
+        /usr/bin/killall -SIGUSR1 mongod
+        /usr/bin/killall -SIGUSR1 mongos
+        rm /var/log/mongodb/mongodb.*.log.`date +%Y`*
+    endscript
+}
