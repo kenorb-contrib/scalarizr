@@ -1,24 +1,24 @@
 from __future__ import with_statement
 '''
 Created on Mar 31, 2010
- 
+
 @author: marat
 '''
- 
+
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from scalarizr.messaging import Messages
- 
+
 def msg_main():
     class HttpRequestHanler(BaseHTTPRequestHandler):
         def do_POST(self):
             self.send_response(201)
     server = HTTPServer(("localhost", 9999), HttpRequestHanler)
     server.serve_forever()
- 
- 
+
+
 def queryenv_main():
     import cgi
- 
+
     class HttpRequestHanler(BaseHTTPRequestHandler):
         def do_POST(self):
             form = cgi.FieldStorage(
@@ -29,13 +29,13 @@ def queryenv_main():
                             'CONTENT_TYPE' : self.headers['Content-Type']
                     }
             )
- 
+
             op = form["operation"].value
- 
+
             if op == "get-https-certificate":
                 self.send_response(200)
                 self.end_headers()
- 
+
                 xml = """<?xml version="1.0" encoding="UTF-8"?>
                         <response>
                                 <cert>MIICWjCCAhigAwIBAgIESPX5.....1myoZSPFYXZ3AA9kwc4uOwhN</cert>
@@ -43,11 +43,11 @@ def queryenv_main():
                         </response>
                         """
                 self.wfile.write(xml)
- 
+
             elif op == "list-roles":
                 self.send_response(200)
                 self.end_headers()
- 
+
                 xml = """<?xml version="1.0" encoding="UTF-8"?>
                         <response>
                                         <roles>
@@ -59,7 +59,7 @@ def queryenv_main():
                         </response>
                                 """
                 self.wfile.write(xml)
- 
+
             elif op == "list-ebs-mountpoints":
                 self.send_response(200)
                 self.end_headers()
@@ -75,11 +75,11 @@ def queryenv_main():
                         </response>
                         """
                 self.wfile.write(xml)
- 
+
             elif op == "list-virtualhosts":
                 self.send_response(200)
                 self.end_headers()
- 
+
                 xml = """<?xml version="1.0" encoding="UTF-8"?>
                         <response>
                                 <vhosts>
@@ -93,7 +93,7 @@ def queryenv_main():
                         </VirtualHost>
                                                         ]]></raw>
                                         </vhost>
- 
+
                                         <vhost hostname="test-ssl-example.scalr.net" https="1" type="apache">
                                                 <raw><![CDATA[
                         <VirtualHost *:443>
@@ -108,11 +108,11 @@ def queryenv_main():
                         </response>
                         """
                 self.wfile.write(xml)
- 
+
             elif op == "list-scripts":
                 self.send_response(200)
                 self.end_headers()
- 
+
                 if 0 and form["event"].value != Messages.EXEC_SCRIPT_RESULT:
                     xml = """<?xml version="1.0" encoding="UTF-8"?>
                             <response>
@@ -128,7 +128,7 @@ import pkgutil
 import pprint
 import sys
 from cgi import escape
- 
+
 def dl(tuples):
 output = u''
 output += '<dl>\n'
@@ -139,27 +139,27 @@ if description:
 output += '  <dt>%s</dt>\n' % escape(description)
 output += '</dl>\n'
 return output
- 
+
 def group(seq):
 result = {}
 for item, category in seq:
 result.setdefault(category, []).append(item)
 return result
- 
+
 def get_packages():
 return set([modname for importer, modname, ispkg in
        pkgutil.walk_packages(onerror=lambda x:x)
        if ispkg and '.' not in modname])
- 
+
 def format_packages():
 packages = group((pkg, pkg[0].lower()) for pkg in get_packages())
 # convert ('a',['apackage','anotherapackage]) into ('a', 'apackage, anotherapackage')
 packages = [(letter, ', '.join(pkgs)) for letter, pkgs in packages.items()]
 return '<h2>Installed Packages</h2>\n%s' % dl(sorted(packages))
- 
+
 def format_environ(environ):
 return '<h2>Environment</h2>\n%s' % dl(sorted(environ.items()))
- 
+
 def format_python_path():
 # differentiate between eggs and regular paths
 eggs = [p for p in sys.path if p.endswith('.egg')]
@@ -167,7 +167,7 @@ paths = [p for p in sys.path if p not in eggs]
 return dl([('Paths', ',\n'.join(paths)),
    ('Eggs', ',\n'.join(eggs)),
   ])
- 
+
 def format_version():
 version, platform = sys.version.split('\n')
 sysname, nodename, release, osversion, machine = os.uname()
@@ -177,7 +177,7 @@ return '<h2>Version</h2>\n%s' % dl([
 ('OS', sysname),
 ('OS Version', osversion),
 ('Machine Type', machine),])
- 
+
 def format():
 output = u''
 output += '<h1>Python Info</h1>\n'
@@ -186,13 +186,13 @@ output += format_python_path()
 output += format_environ(os.environ)
 output += format_packages()
 return output
- 
+
 def page(html):
 print "Content-type: text/html"
 print
 print '<html>\n<head><title>%s Python configuration</title></head>' % os.uname()[1]
 print '<body>\n%s</body>\n</html>' % html
- 
+
 if __name__ == '__main__':
 page(format())]]></body>
                                     </script>
@@ -201,14 +201,13 @@ page(format())]]></body>
                             """
                 else:
                     xml = """<?xml version="1.0" encoding="UTF-8"?><response><scripts/></response>"""
- 
+
                 self.wfile.write(xml)
             else:
                 self.send_response(400)
                 self.end_headers()
                 self.wfile.write("Unknown operatation '%s'" % (op))
- 
- 
+
+
     server = HTTPServer(("localhost", 9998), HttpRequestHanler)
     server.serve_forever()
- 

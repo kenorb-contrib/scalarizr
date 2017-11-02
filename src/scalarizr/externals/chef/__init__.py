@@ -7,4 +7,3 @@ from scalarizr.externals.chef.exceptions import ChefError
 from scalarizr.externals.chef.node import Node
 from scalarizr.externals.chef.role import Role
 from scalarizr.externals.chef.search import Search
- 

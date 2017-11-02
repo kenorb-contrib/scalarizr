@@ -1,7 +1,7 @@
 from __future__ import with_statement
 # $Id: __init__.py 3375 2008-02-13 08:05:08Z fredrik $
 # elementtree package
- 
+
 # --------------------------------------------------------------------
 # The ElementTree toolkit is
 #
@@ -29,7 +29,6 @@ from __future__ import with_statement
 # ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
 # OF THIS SOFTWARE.
 # --------------------------------------------------------------------
- 
+
 # Licensed to PSF under a Contributor Agreement.
 # See http://www.python.org/psf/license for licensing details.
- 

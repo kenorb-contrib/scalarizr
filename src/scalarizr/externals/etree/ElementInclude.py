@@ -41,28 +41,28 @@ from __future__ import with_statement
 # ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
 # OF THIS SOFTWARE.
 # --------------------------------------------------------------------
- 
+
 # Licensed to PSF under a Contributor Agreement.
 # See http://www.python.org/psf/license for licensing details.
- 
+
 ##
 # Limited XInclude support for the ElementTree package.
 ##
- 
+
 import copy
 from . import ElementTree
- 
+
 XINCLUDE = "{http://www.w3.org/2001/XInclude}"
- 
+
 XINCLUDE_INCLUDE = XINCLUDE + "include"
 XINCLUDE_FALLBACK = XINCLUDE + "fallback"
- 
+
 ##
 # Fatal include error.
- 
+
 class FatalIncludeError(SyntaxError):
     pass
- 
+
 ##
 # Default loader.  This loader reads an included resource from disk.
 #
@@ -74,7 +74,7 @@ class FatalIncludeError(SyntaxError):
 #    is a Unicode string.  If the loader fails, it can return None
 #    or raise an IOError exception.
 # @throws IOError If the loader fails to load the resource.
- 
+
 def default_loader(href, parse, encoding=None):
     file = open(href)
     if parse == "xml":
@@ -85,7 +85,7 @@ def default_loader(href, parse, encoding=None):
             data = data.decode(encoding)
     file.close()
     return data
- 
+
 ##
 # Expand XInclude directives.
 #
@@ -96,7 +96,7 @@ def default_loader(href, parse, encoding=None):
 # @throws FatalIncludeError If the function fails to include a given
 #     resource, or if the tree contains malformed XInclude elements.
 # @throws IOError If the function fails to load a given resource.
- 
+
 def include(elem, loader=None):
     if loader is None:
         loader = default_loader
@@ -142,4 +142,3 @@ def include(elem, loader=None):
         else:
             include(e, loader)
         i = i + 1
- 

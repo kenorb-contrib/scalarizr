@@ -1,64 +1,64 @@
 from __future__ import with_statement
 import abc
 import collections
- 
+
 from scalarizr.externals.chef.api import ChefAPI
 from scalarizr.externals.chef.base import ChefObject, ChefQuery, ChefObjectMeta
 from scalarizr.externals.chef.exceptions import ChefError, ChefServerNotFoundError
- 
+
 class DataBagMeta(ChefObjectMeta, abc.ABCMeta):
     """A metaclass to allow DataBag to use multiple inheritance."""
- 
- 
+
+
 class DataBag(ChefObject, ChefQuery):
     """A Chef data bag object.
- 
+
     Data bag items are available via the mapping API. Evaluation works in the
     same way as :class:`ChefQuery`, so requesting only the names will not
     cause the items to be loaded::
- 
+
         bag = DataBag('versions')
         item = bag['web']
         for name, item in bag.iteritems():
             print item['qa_version']
     """
- 
+
     __metaclass__ = DataBagMeta
- 
+
     url = '/data'
- 
+
     def _populate(self, data):
         self.names = data.keys()
- 
+
     def obj_class(self, name, api):
         return DataBagItem(self, name, api=api)
- 
- 
+
+
 class DataBagItem(ChefObject, collections.MutableMapping):
     """A Chef data bag item object.
- 
+
     Data bag items act as normal dicts and can contain arbitrary data.
     """
- 
+
     __metaclass__ = DataBagMeta
- 
+
     url = '/data'
     attributes = {
         'raw_data': dict,
     }
- 
+
     def __init__(self, bag, name, api=None, skip_load=False):
         self._bag = bag
         super(DataBagItem, self).__init__(str(bag)+'/'+name, api=api, skip_load=skip_load)
         self.name = name
- 
+
     @property
     def bag(self):
         """The :class:`DataBag` this item is a member of."""
         if not isinstance(self._bag, DataBag):
             self._bag = DataBag(self._bag, api=self.api)
         return self._bag
- 
+
     @classmethod
     def from_search(cls, data, api):
         bag = data.get('data_bag')
@@ -72,28 +72,28 @@ class DataBagItem(ChefObject, collections.MutableMapping):
         obj.exists = True
         obj._populate(data)
         return obj
- 
+
     def _populate(self, data):
         if 'json_class' in data:
             self.raw_data = data['raw_data']
         else:
             self.raw_data = data
- 
+
     def __len__(self):
         return len(self.raw_data)
- 
+
     def __iter__(self):
         return iter(self.raw_data)
- 
+
     def __getitem__(self, key):
         return self.raw_data[key]
- 
+
     def __setitem__(self, key, value):
         self.raw_data[key] = value
- 
+
     def __delitem__(self, key):
         del self.raw_data[key]
- 
+
     @classmethod
     def create(cls, bag, name, api=None, **kwargs):
         """Create a new data bag item. Pass the initial value for any keys as
@@ -109,7 +109,7 @@ class DataBagItem(ChefObject, collections.MutableMapping):
             # item instantly
             bag.names.append(name)
         return obj
- 
+
     def save(self, api=None):
         """Save this object to the server. If the object does not exist it
         will be created.
@@ -120,4 +120,3 @@ class DataBagItem(ChefObject, collections.MutableMapping):
             api.api_request('PUT', self.url, data=self.raw_data)
         except ChefServerNotFoundError, e:
             api.api_request('POST', self.__class__.url+'/'+str(self._bag), data=self.raw_data)
- 

@@ -1,22 +1,22 @@
 from __future__ import with_statement
- 
+
 import sys
 import logging
- 
+
 from scalarizr import storage2, util
 from scalarizr.libs import bases
- 
+
 LOG = logging.getLogger(__name__)
- 
- 
+
+
 class Error(Exception):
     pass
- 
- 
+
+
 backup_types = {}
 restore_types = {}
- 
- 
+
+
 def backup(*args, **kwds):
     if args:
         if isinstance(args[0], dict):
@@ -32,8 +32,8 @@ def backup(*args, **kwds):
         "scalarizr.services.backup.backup_types?" % type_
         raise Error(msg)
     return cls(**kwds)
- 
- 
+
+
 def restore(*args, **kwds):
     if args:
         if isinstance(args[0], dict):
@@ -49,13 +49,13 @@ def restore(*args, **kwds):
         "scalarizr.services.backup.restore_types?" % type_
         raise Error(msg)
     return cls(**kwds)
- 
- 
+
+
 class Backup(bases.Task):
     features = {
             'start_slave': True
     }
- 
+
     def __init__(self,
                             type='base',
                             description=None,
@@ -66,10 +66,10 @@ class Backup(bases.Task):
                         description=description,
                         tags=tags or {},
                         **kwds)
- 
- 
+
+
 class Restore(bases.Task):
- 
+
     features = {
             'master_binlog_reset': False
     }
@@ -80,21 +80,21 @@ class Restore(bases.Task):
     position in binary log is implementation dependent and Master is
     responsible for this.
     '''
- 
+
     def __init__(self,
                             type='base',
                             **kwds):
         super(Restore, self).__init__(
                         type=type,
                         **kwds)
- 
- 
+
+
 backup_types['base'] = Backup
 restore_types['base'] = Restore
- 
- 
+
+
 class SnapBackup(Backup):
- 
+
     def __init__(self,
                             volume=None,
                             **kwds):
@@ -107,7 +107,7 @@ class SnapBackup(Backup):
                 # Fires when all disk I/O activity should be resumed
                 'unfreeze'
         )
- 
+
     def _run(self):
         self.volume = storage2.volume(self.volume)
         LOG.debug('Volume obj: %s', self.volume)
@@ -118,9 +118,15 @@ class SnapBackup(Backup):
             snap = self.volume.snapshot(self.description, tags=self.tags)
         finally:
             self.fire('unfreeze', self.volume, state)
-        util.wait_until(lambda: snap.status() in (snap.COMPLETED, snap.FAILED),
-                                start_text='Polling snapshot status (%s)' % snap.id,
-                                logger=LOG)
+        try:
+            util.wait_until(lambda: snap.status() in (snap.COMPLETED, snap.FAILED),
+                                    start_text='Polling snapshot status (%s)' % snap.id,
+                                    logger=LOG)
+        except:
+            if 'Request limit exceeded' in str(sys.exc_info()[1]):
+                pass
+            else:
+                raise
         if snap.status() == snap.FAILED:
             msg = 'Backup failed because snapshot %s failed' % snap.id
             raise Error(msg)
@@ -128,17 +134,17 @@ class SnapBackup(Backup):
                         type=self.type,
                         snapshot=snap,
                         **state)
- 
- 
+
+
 class SnapRestore(Restore):
- 
+
     def __init__(self, snapshot=None, volume=None, **kwds):
         super(SnapRestore, self).__init__(
                         snapshot=snapshot,
                         volume=volume,
                         **kwds)
- 
- 
+
+
     def _run(self):
         self.snapshot = storage2.snapshot(self.snapshot)
         if self.volume:
@@ -148,8 +154,7 @@ class SnapRestore(Restore):
         else:
             self.volume = self.snapshot.restore()
         return self.volume
- 
- 
+
+
 backup_types['snap'] = SnapBackup
 restore_types['snap'] = SnapRestore
- 

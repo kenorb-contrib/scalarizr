@@ -4,14 +4,14 @@ import os as osmod
 import platform
 import types
 import distutils.version
- 
+
 from scalarizr import util
- 
- 
+
+
 class LinuxError(util.PopenError):
     pass
- 
- 
+
+
 def which(exe, path_append=None):
     if exe and exe.startswith('/') and \
                     osmod.access(exe, osmod.X_OK):
@@ -27,13 +27,19 @@ def which(exe, path_append=None):
         if osmod.access(full_path, osmod.X_OK):
             return full_path
     return None
- 
- 
+
+
 def system(*args, **kwds):
     args = list(args)
     kwds['exc_class'] = LinuxError
     kwds['close_fds'] = system.close_fds
-    if not kwds.get('shell') and not osmod.access(args[0][0], osmod.X_OK):
+    try:
+        is_windows = os.windows
+    except NameError:
+        # When system is called during 'os' dict initialization
+        is_windows = platform.uname()[0].lower() == 'windows'
+    if not is_windows and not kwds.get('shell') and \
+            not osmod.access(args[0][0], osmod.X_OK):
         executable = which(args[0][0])
         if not executable:
             msg = "Executable '%s' not found" % args[0][0]
@@ -42,8 +48,8 @@ def system(*args, **kwds):
         args[0][0] = executable
     return util.system2(*args, **kwds)
 system.close_fds = platform.uname()[0].lower() != 'windows'
- 
- 
+
+
 class Version(distutils.version.LooseVersion):
     def __cmp__(self, other):
         if type(other) in (types.TupleType, types.ListType):
@@ -51,23 +57,23 @@ class Version(distutils.version.LooseVersion):
             other0.version = list(other)
             other = other0
         return distutils.version.LooseVersion.__cmp__(self, other)
- 
- 
+
+
 class __os(dict):
     def __init__(self, *args, **kwds):
         dict.__init__(self, *args, **kwds)
         self._detect_dist()
         if not self['family'] == 'Windows':
             self._detect_kernel()
- 
- 
+
+
     def __getattr__(self, name):
         name = name.lower()
         if name.endswith('_family'):
             return self['family'].lower() == name[0:-7]
         else:
             return self['name'].lower() == name
- 
+
     def _detect_dist(self):
         # Detect windows
         _uname = platform.uname()
@@ -78,7 +84,7 @@ class __os(dict):
             self['release'] = win32_ver[1]
             self['codename'] = win32_ver[0]
             self['arch'] = 'x86_64' if platform.uname()[4].upper() == 'AMD64' else 'i386'
- 
+
         elif osmod.path.isfile('/etc/lsb-release'):
             for line in open('/etc/lsb-release').readlines():
                 # Matches any possible format:
@@ -88,10 +94,10 @@ class __os(dict):
                 #     DISTRIB_RELEASE='10.10'
                 #     DISTRIB_CODENAME='squeeze'
                 #     DISTRIB_DESCRIPTION='Ubuntu 10.10'
-                regex = re.compile('^(DISTRIB_(?:ID|RELEASE|CODENAME|DESCRIPTION))=(?:\'|")?([\w\s\.-_]+)(?:\'|")?')
+                regex = re.compile('^DISTRIB_((?:ID|RELEASE|CODENAME|DESCRIPTION))=(?:\'|")?([\w\s\.-_]+)(?:\'|")?')
                 match = regex.match(line)
                 if match:
-                    # Adds: lsb_distrib_{id,release,codename,description}
+                    # Adds: lsb_{id,release,codename,description}
                     self['lsb_%s' % match.groups()[0].lower()] = match.groups()[1].rstrip()
         try:
             import lsb_release
@@ -102,17 +108,19 @@ class __os(dict):
             pass
         if 'lsb_codename' in self:
             self['codename'] = self['lsb_codename']
- 
+        if 'lsb_release' in self:
+            self['release'] = self['lsb_release']
+
         if osmod.path.isfile('/etc/arch-release'):
             self['name'] = 'Arch'
             self['family'] = 'Arch'
         elif osmod.path.isfile('/etc/debian_version'):
             self['name'] = 'Debian'
             self['family'] = 'Debian'
-            if 'lsb_distrib_id' in self:
-                if 'GCEL' in self['lsb_distrib_id']:
+            if 'lsb_id' in self:
+                if 'GCEL' in self['lsb_id']:
                     self['name'] = 'GCEL'
-                if 'Ubuntu' in self['lsb_distrib_id']:
+                if 'Ubuntu' in self['lsb_id']:
                     self['name'] = 'Ubuntu'
                 elif osmod.path.isfile('/etc/issue.net') and \
                         'Ubuntu' in open('/etc/issue.net').readline():
@@ -167,15 +175,9 @@ class __os(dict):
         elif osmod.path.isfile('/etc/system-release'):
             self['family'] = 'RedHat'
             data = open('/etc/system-release', 'r').read().strip()
-            if 'amazon' in data.lower():
+            if data.lower().startswith('amazon'):
                 self['name'] = 'Amazon'
-                code = data[-7:]
-                bases = {
-                '2012.09': '6.3',
-                '2013.03': '6.4'
-                }
-                self['release'] = Version(bases.get(code, '6.3'))
-                self['codename'] = code
+                self['release'] = data[-7:]
         elif osmod.path.isfile('/etc/SuSE-release'):
             self['family'] = 'Suse'
             data = open('/etc/SuSE-release', 'r').read()
@@ -191,35 +193,36 @@ class __os(dict):
         if not 'name' in self:
             self['name'] = name
         if not 'release' in self:
-            self['release'] = Version(release)
+            self['release'] = release
+        self['release'] = Version(self['release'])
         self['version'] = self['release']
         if not 'codename' in self:
             self['codename'] = codename
- 
- 
+
+
         if not 'name' in self:
             self['name'] = 'Unknown %s' % self['kernel']
             self['family'] = 'Unknown'
         if not 'family' in self:
             self['family'] = 'Unknown'
- 
+
     def _detect_kernel(self):
         o, e, ret_code = system(['modprobe', '-l'], raise_exc=False, silent=True)
         self['mods_enabled'] = 0 if ret_code else 1
- 
+
         uname = osmod.uname()
         self['kernel_release'] = Version(uname[2])
         arch = uname[-1]
         if re.search(r'i\d86', arch):
             arch = 'i386'
         self['arch'] = arch
- 
+
     def _detect_cloud(self):
         pass
- 
+
 os = __os()
- 
- 
+
+
 ubuntu_release_to_codename = {
         '8.04': 'hardy',
         '8.10': 'intrepid',
@@ -232,9 +235,11 @@ ubuntu_release_to_codename = {
         '12.04': 'precise',
         '12.10': 'quantal',
         '13.04': 'raring',
-        '13.10': 'saucy'
+        '13.10': 'saucy',
+        '14.04': 'trusty',
+        '14.10': 'utopic'
 }
- 
+
 def build_cmd_args(executable=None,
                                    short=None,
                                    long=None,
@@ -263,4 +268,3 @@ def build_cmd_args(executable=None,
     if params:
         ret += list(params)
     return map(str, ret)
- 

@@ -1,7 +1,7 @@
 from __future__ import with_statement
 '''
 Created on Feb 7, 2011
- 
+
 @author: spike
 '''
 from . import FormatProvider
@@ -10,19 +10,19 @@ from ..utils import quote, unquote
 import os
 import re
 import sys
- 
+
 if sys.version_info[0:2] >= (2, 7):
     from xml.etree import ElementTree as ET
 else:
     from scalarizr.externals.etree import ElementTree as ET
- 
+
 class IniFormatProvider(FormatProvider):
- 
+
     _readers = None
     _writers = None
     _comment_re_string = '\s*[#;](.*)$'
     _opt_re_string          = r'(?P<option>[^:=\s][^:=]*)\s*(?P<vi>[:=])\s*(?P<value>.*?)\s*(?P<comment>[#;](.*))?$'
- 
+
     def __init__(self):
         FormatProvider.__init__(self)
         self._readers = (
@@ -37,7 +37,7 @@ class IniFormatProvider(FormatProvider):
                 self.write_section,
                 self.write_option
         )
- 
+
     def create_element(self, etree, path, value):
         el = FormatProvider.create_element(self, etree, path, value)
         parent_path = os.path.dirname(path)
@@ -50,8 +50,8 @@ class IniFormatProvider(FormatProvider):
         else:
             el.attrib['mc_type'] = 'option'
         return el
- 
- 
+
+
     def read_comment(self, line, root):
         if not hasattr(self, "_comment_re"):
             self._comment_re = re.compile(self._comment_re_string)
@@ -60,7 +60,7 @@ class IniFormatProvider(FormatProvider):
             self._cursect.append(comment)
             return True
         return False
- 
+
     def read_section(self, line, root):
         if not hasattr(self, "_sect_re"):
             self._sect_re = re.compile(r'\[(?P<header>[^]]+)\]')
@@ -69,15 +69,15 @@ class IniFormatProvider(FormatProvider):
             self._cursect.attrib['mc_type'] = 'section'
             return True
         return False
- 
- 
+
+
     def read_blank(self, line, root):
         if '' == line.strip():
             ET.SubElement(self._cursect, '')
             return True
         return False
- 
- 
+
+
     def read_option(self, line, root):
         if not hasattr(self, "_opt_re"):
             self._opt_re = re.compile(self._opt_re_string)
@@ -93,8 +93,8 @@ class IniFormatProvider(FormatProvider):
             new_opt.attrib['mc_type'] = 'option'
             return True
         return False
- 
- 
+
+
     def write_comment(self, fp, node):
         if callable(node.tag):
             comment_lines  = str(node.text).split('\n')
@@ -102,16 +102,16 @@ class IniFormatProvider(FormatProvider):
                 fp.write('#'+line+'\n')
             return True
         return False
- 
- 
+
+
     def write_section(self, fp, node):
         if node.attrib.has_key('mc_type') and node.attrib['mc_type'] == 'section':
             fp.write('['+unquote(node.tag)+']\n')
             self.write(fp, node, False)
             return True
         return False
- 
- 
+
+
     def write_option(self, fp, node):
         if node.attrib.has_key('mc_type') and node.attrib['mc_type'] == 'option':
             value = str(node.text if node.text else '')
@@ -120,11 +120,10 @@ class IniFormatProvider(FormatProvider):
             fp.write(unquote(node.tag)+"\t= "+value+'\n')
             return True
         return False
- 
- 
+
+
     def write_blank(self, fp, node):
         if not node.tag and not callable(node.tag):
             fp.write('\n')
             return True
         return False
- 

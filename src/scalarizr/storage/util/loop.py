@@ -1,17 +1,17 @@
 from __future__ import with_statement
 '''
 Created on Jan 6, 2011
- 
+
 @author: marat
 '''
- 
+
 from .. import system, StorageError
- 
+
 import os
- 
- 
+
+
 LOSETUP_EXEC = '/sbin/losetup'
- 
+
 def mkloop(filename, device=None, size=None, quick=False):
     ''' Create loop device '''
     if size and not os.path.exists(filename):
@@ -32,7 +32,7 @@ def mkloop(filename, device=None, size=None, quick=False):
     else:
         system((LOSETUP_EXEC, device, filename))
     return device
- 
+
 def listloop():
     ret = {}
     loop_lines = system((LOSETUP_EXEC, '-a'))[0].strip().splitlines()
@@ -40,8 +40,8 @@ def listloop():
         words = loop_line.split()
         ret[words[0][:-1]] = words[-1][1:-1]
     return ret
- 
- 
+
+
 def rmloop(device):
     try:
         system((LOSETUP_EXEC, '-d', device))
@@ -51,4 +51,3 @@ def rmloop(device):
             pass
         else:
             raise
- 

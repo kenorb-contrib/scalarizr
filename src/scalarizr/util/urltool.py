@@ -1,14 +1,14 @@
 from __future__ import with_statement
 '''
 Created on May 23, 2011
- 
+
 @author: marat
 '''
- 
+
 import urllib2
- 
+
 class HTTPRedirectHandler(urllib2.HTTPRedirectHandler):
- 
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         """Return a Request or None in response to a redirect.
         This is called by the http_error_30x methods when a
@@ -18,7 +18,7 @@ class HTTPRedirectHandler(urllib2.HTTPRedirectHandler):
         else should try to handle this url.  Return None if you can't
         but another Handler might.
         """
- 
+
         m = req.get_method()
         if (code in (301, 302, 303, 307) and m in ("GET", "HEAD")
                 or code in (301, 302, 303, 305) and m == "POST"):
@@ -29,15 +29,15 @@ class HTTPRedirectHandler(urllib2.HTTPRedirectHandler):
             # do the same.
             # be conciliant with URIs containing a space
             newurl = newurl.replace(' ', '%20')
-            newheaders = dict((k,v) for k,v in req.headers.items()
-                                            if k.lower() not in ("content-length", "content-type")
-                                            )
+            newheaders = dict((k, v) 
+                for k, v in req.headers.items()
+                if k.lower() not in ("content-length", "content-type"))
             return urllib2.Request(newurl,
+                                    data=req.get_data(),
                                     headers=newheaders,
                                     origin_req_host=req.get_origin_req_host(),
                                     unverifiable=True)
         else:
             raise urllib2.HTTPError(req.get_full_url(), code, msg, headers, fp)
- 
+
     http_error_305 = urllib2.HTTPRedirectHandler.http_error_302
- 

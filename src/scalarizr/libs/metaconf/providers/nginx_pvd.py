@@ -1,36 +1,36 @@
 from __future__ import with_statement
 '''
 Created on Feb 7, 2011
- 
+
 @author: spike
 '''
 from .ini_pvd import IniFormatProvider
 from . import FormatProvider
 from ..utils import quote, unquote
- 
+
 import re
 import os
 import sys
- 
+
 if sys.version_info[0:2] >= (2, 7):
     from xml.etree import ElementTree as ET
 else:
     from scalarizr.externals.etree import ElementTree as ET
- 
+
 try:
     from  cStringIO import StringIO
 except ImportError:
     from StringIO import StringIO
- 
+
 class NginxFormatProvider(IniFormatProvider):
- 
+
     def __init__(self):
         IniFormatProvider.__init__(self)
         self._readers += (self.read_statement,)
         self._writers += (self.write_statement,)
         self._nesting  = 0
         self._pad = '   '
- 
+
     def create_element(self, etree, path, value):
         el = FormatProvider.create_element(self, etree, path, value)
         parent_path = os.path.dirname(path)
@@ -42,10 +42,10 @@ class NginxFormatProvider(IniFormatProvider):
                 if parent.text and parent.text.strip():
                     parent.attrib['value'] = parent.text.strip()
                     parent.text = ''
- 
+
         el.attrib['mc_type'] = 'option' if value else 'statement'
         return el
- 
+
     def read_comment(self, line, root):
         if not hasattr(self, "_comment_re"):
             self._comment_re = re.compile('\s*#(.*)$')
@@ -54,14 +54,14 @@ class NginxFormatProvider(IniFormatProvider):
             self._cursect.append(comment)
             return True
         return False
- 
- 
+
+
     def read_option(self, line, root):
         if not hasattr(self, "_multi_re"):
             self._multi_re = re.compile("\s*(?P<statement>[^\s]+)\s+(?P<value>.+?)(?P<multi_end>;)?\s*(#(?P<comment>.*))?$")
- 
+
         result = self._multi_re.match(line)
- 
+
         if result:
             new_multi = ET.Element(quote(result.group('statement').strip()))
             new_multi.attrib['mc_type'] = 'option'
@@ -95,7 +95,7 @@ class NginxFormatProvider(IniFormatProvider):
                 self._cursect.append(new_multi)
                 return True
         return False
- 
+
     def read_statement(self, line, root):
         if not hasattr(self, "_stat_re"):
             self._stat_re = re.compile(r'\s*([^\s\[\]]*)\s*;\s*$')
@@ -104,11 +104,11 @@ class NginxFormatProvider(IniFormatProvider):
             new_statement.attrib['mc_type'] = 'statement'
             return True
         return False
- 
+
     def read_section(self, line, root):
         if not hasattr(self, "_sect_re"):
             self._sect_re = re.compile('\s*(?P<option>[^\s]+)\s*(?P<value>.*?)\s*{\s*(?P<comment>#(.*))?\s*')
- 
+
         result = self._sect_re.match(line)
         if result:
             new_section = ET.SubElement(self._cursect, quote(result.group('option').strip()))
@@ -118,19 +118,19 @@ class NginxFormatProvider(IniFormatProvider):
             if result.group('comment'):
                 new_section.append(ET.Comment(result.group(4)))
             opened = 1 if '}' not in line.split('#')[0] else 0
- 
+
             while opened != 0:
                 new_line = self._fp.readline()
                 if not new_line:
                     return False
                 line += new_line
- 
+
                 line_wo_comment = new_line.split('#')[0]
                 if '{' in line_wo_comment:
                     opened += 1
                 if '}' in line_wo_comment:
                     opened -= 1
- 
+
             self._sections.append(self._cursect)
             self._cursect = new_section
             old_fp = self._fp
@@ -141,7 +141,7 @@ class NginxFormatProvider(IniFormatProvider):
             self._lineno += 1
             return True
         return False
- 
+
     def write_comment(self, fp, node):
         if callable(node.tag):
             comment_lines  = node.text.split('\n')
@@ -149,13 +149,13 @@ class NginxFormatProvider(IniFormatProvider):
                 fp.write(self._pad*self._nesting + '#'+line+'\n')
             return True
         return False
- 
+
     def write_statement(self, fp, node):
         if node.attrib.has_key('mc_type') and node.attrib['mc_type'] == 'statement':
             fp.write(self._pad*self._nesting + unquote(node.tag)+';\n')
             return True
         return False
- 
+
     def write_section(self, fp, node):
         if node.attrib.has_key('mc_type') and node.attrib['mc_type'] == 'section':
             value = unquote(node.attrib['value']) if node.attrib.has_key('value') else ''
@@ -168,11 +168,11 @@ class NginxFormatProvider(IniFormatProvider):
             fp.write(self._pad*self._nesting + '}\n')
             return True
         return False
- 
+
     def write_option(self, fp, node):
         if node.attrib.has_key('mc_type') and node.attrib['mc_type'] == 'option':
-            values = node.text.split('\n')
-            fp.write (self._pad*self._nesting + unquote(node.tag)+ self._pad + unquote(values.pop(0)))
+            values = node.text.split('\n') if getattr(node, 'text') else ['']
+            fp.write (self._pad*self._nesting + unquote(node.tag) + self._pad + unquote(values.pop(0)))
             if len(values):
                 tag_len = len(node.tag)
                 for value in values:
@@ -180,4 +180,3 @@ class NginxFormatProvider(IniFormatProvider):
             fp.write(';\n')
             return True
         return False
- 

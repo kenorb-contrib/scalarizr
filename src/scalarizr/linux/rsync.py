@@ -1,20 +1,18 @@
 from __future__ import with_statement
- 
+
 import os
- 
-from scalarizr.linux import pkgmgr
-from scalarizr.linux import build_cmd_args
-from scalarizr.linux import system
- 
- 
+
+from scalarizr import linux
+from scalarizr.node import __node__
+
+
+
 def rsync(src, dst, **long_kwds):
-    if not os.path.exists('/usr/bin/rsync'):
-        pkgmgr.installed('rsync')
-    system(['sync'])
-    output = system(build_cmd_args(executable='/usr/bin/rsync',
-                                   long=long_kwds,
-                                   params=[src, dst],
-                                   duplicate_keys=True))
-    system(['sync'])
+    linux.system(['sync'])
+    output = linux.system(linux.build_cmd_args(
+            executable=os.path.join(__node__['embedded_bin_dir'], 'rsync'),
+            long=long_kwds,
+            params=[src, dst],
+            duplicate_keys=True))
+    linux.system(['sync'])
     return output
- 

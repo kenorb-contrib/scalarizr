@@ -2,143 +2,61 @@ import os
 import re
 import shutil
 import logging
-import socket
-import glob
- 
+
 from scalarizr import handlers, linux
 from scalarizr.bus import bus
-from scalarizr.linux import pkgmgr, execute
-from scalarizr.messaging import Messages
-from scalarizr.util import initdv2, firstmatched
+from scalarizr.linux import pkgmgr, execute, iptables
 from scalarizr.node import __node__
- 
- 
+from scalarizr.api import tomcat as tomcat_api
+from scalarizr.api.tomcat import augtool
+
+
 LOG = logging.getLogger(__name__)
- 
+
 __tomcat__ = __node__['tomcat']
-__tomcat__.update({
-    'catalina_home_dir': None,
-    'java_home': firstmatched(lambda path: os.access(path, os.X_OK), [
-            linux.system('echo $JAVA_HOME', shell=True)[0].strip(),
-            '/usr/java/default'], 
-            '/usr'),
-    'config_dir': None,
-    'install_type': None
-})
- 
+
 def get_handlers():
     return [TomcatHandler()]
- 
- 
+
+
 class KeytoolExec(execute.BaseExec):
     executable = '{0}/bin/keytool'.format(__tomcat__['java_home'])
- 
+
     # keytool uses long args with a short prefix
     def _default_handler(self, key, value, cmd_args):
         cmd_args.append('-{0}'.format(key))
         if value is not True:
             cmd_args.append(str(value))
- 
+
     # last param is a keytool command that should be first
     def _after_all_handlers(self, cmd_args):
         return ['-{0}'.format(cmd_args[-1])] + cmd_args[0:-1]
- 
- 
-class CatalinaInitScript(initdv2.ParametrizedInitScript):
-    def __init__(self):
-        initdv2.ParametrizedInitScript.__init__(self, 'tomcat', 
-                __tomcat__['catalina_home_dir'] + '/bin/catalina.sh')
-        self.server_port = None
- 
-    def status(self):
-        if not self.server_port:
-            out = augtool(['print /files{0}/server.xml/Server/#attribute/port'.format(__tomcat__['config_dir'])])
-            self.server_port = out.split(' = ')[-1]
- 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            sock.connect(('', self.server_port))
-            return initdv2.Status.RUNNING
-        except:
-            return initdv2.Status.NOT_RUNNING
-        finally:
-            try:
-                sock.close()
-            except:
-                pass
- 
- 
-def augload():
-    path = __tomcat__['config_dir']
-    return [
-        'set /augeas/load/Xml/incl[last()+1] "{0}/*.xml"'.format(path),
-        'load',
-        'defvar service /files{0}/server.xml/Server/Service'.format(path)                       
-    ]
- 
-def augtool(script_lines):
-    augscript = augload() + script_lines
-    augscript = '\n'.join(augscript)
-    LOG.debug('augscript: %s', augscript)
-    return linux.system(('augtool', ), stdin=augscript)[0].strip()
- 
- 
-class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
- 
+
+
+class TomcatHandler(handlers.Handler):
+
     def __init__(self):
         handlers.Handler.__init__(self)
-        handlers.FarmSecurityMixin.__init__(self, [8080, 8443])
         bus.on(
             init=self.on_init, 
             start=self.on_start
         )
- 
-        # try to read CATALINA_HOME from environment
-        __tomcat__['catalina_home_dir'] = linux.system('echo $CATALINA_HOME', shell=True)[0].strip()
-        if not __tomcat__['catalina_home_dir']:
-            # try to locate CATALINA_HOME in /opt/apache-tomcat*
-            try:
-                __tomcat__['catalina_home_dir'] = glob.glob('/opt/apache-tomcat*')[0]
-            except IndexError:
-                pass
- 
-        if __tomcat__['catalina_home_dir']:
-            __tomcat__['install_type'] = 'binary'
-            __tomcat__['config_dir'] = '{0}/conf'.format(__tomcat__['catalina_home_dir'])
-            init_script_path = '/etc/init.d/tomcat'
-            if os.path.exists(init_script_path):
-                self.service = initdv2.ParametrizedInitScript('tomcat', init_script_path)
-            else:
-                self.service = CatalinaInitScript()
-        else:
-            __tomcat__['install_type'] = 'package'
-            if linux.os.debian_family:
-                if (linux.os['name'] == 'Ubuntu' and linux.os['version'] >= (12, 4)) or \
-                    (linux.os['name'] == 'Debian' and linux.os['version'] >= (7, 0)):
-                    tomcat_version = 7
-                else:
-                    tomcat_version = 6
-            else:
-                tomcat_version = 6
-            __tomcat__['config_dir'] = '/etc/tomcat{0}'.format(tomcat_version)
-            init_script_path = '/etc/init.d/tomcat{0}'.format(tomcat_version)  
-            self.service = initdv2.ParametrizedInitScript('tomcat', init_script_path)
- 
+        self.api = tomcat_api.TomcatAPI()
+        self.service = self.api.service
+
+
     def on_init(self):
         bus.on(
             host_init_response=self.on_host_init_response,
             before_host_up=self.on_before_host_up
         )
- 
+        self._insert_iptables_rules()
+
     def on_start(self):
         if __node__['state'] == 'running':
             self.service.start()
- 
-    def accept(self, message, queue, behaviour=None, **kwds):
-        return message.name in (
-                Messages.HOST_INIT, 
-                Messages.HOST_DOWN) and 'tomcat' in behaviour
- 
+
+
     def on_host_init_response(self, hir_message):
         '''
         if not os.path.exists(self.service.initd_script):
@@ -151,9 +69,9 @@ class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
             for pkg in pkgs:
                 pkgmgr.installed(pkg)
         '''
- 
-        pkgmgr.installed('augeas-tools' if linux.os.debian_family else 'augeas')
- 
+
+        pkgmgr.installed('augeas-tools' if linux.os.debian_family else 'augeas', updatedb=True)
+
     '''
     def _aug_load_tomcat(self, aug):
         aug.set('/augeas/load/Xml/incl[last()+1]', '{0}/*.xml'.format(__tomcat__['config_dir']))
@@ -169,8 +87,8 @@ class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
             raise Exception(msg)
         aug.defvar('service', '/files{0}/Server/Service'.format(file_))
     '''
- 
- 
+
+
     def on_before_host_up(self, message):
         # Fix XML prolog in server.xml
         config_dir = __tomcat__['config_dir']
@@ -187,8 +105,8 @@ class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
                     for line in fpr:
                         fpw.write(line)
             os.remove(config_dir + '/server.xml.0')
- 
- 
+
+
         # Enable SSL
         if not '8443' in augtool(['print $service/Connector/*/port']):
             if __tomcat__['install_type'] == 'binary':
@@ -197,7 +115,7 @@ class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
                     self.service.stop()
             else:
                 self.service.stop()
- 
+
             keystore_path = config_dir + '/keystore'
             if not os.path.exists(keystore_path):
                 LOG.info('Initializing keystore in %s', keystore_path)
@@ -208,7 +126,7 @@ class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
                     storepass='changeit', 
                     keypass='changeit', 
                     dname='CN=John Smith')
- 
+
             # Detect keystore type
             keytool = KeytoolExec()
             out = keytool.start('list', 
@@ -221,7 +139,7 @@ class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
                     keystore_type = m.group(1)
                     break
             LOG.info('Keystore type: %s', keystore_type)
- 
+
             LOG.info('Enabling HTTPS on 8443')
             augscript = [
                 'set $service/Connector[last()+1]/#attribute/port 8443',
@@ -238,12 +156,21 @@ class TomcatHandler(handlers.Handler, handlers.FarmSecurityMixin):
                 'save'
             ]
             augtool(augscript)
- 
- 
+
+
         # TODO: Import PEM cert/pk into JKS
         # openssl pkcs12 -export -in cert.pem -inkey key.pem > server.p12
         # keytool -importkeystore -srckeystore server.p12 -destkeystore server.jks -srcstoretype pkcs12
- 
+
         self.service.start()
- 
- 
+
+
+    def _insert_iptables_rules(self):
+        if iptables.enabled():
+            for port in (8080, 8443):
+                iptables.FIREWALL.ensure([{
+                    "jump": "ACCEPT", 
+                    "protocol": "tcp", 
+                    "match": "tcp", 
+                    "dport": str(port)
+                }])

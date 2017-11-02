@@ -1,10 +1,10 @@
 from __future__ import with_statement
 '''
 Created on Feb 7, 2011
- 
+
 @author: spike
 '''
- 
+
 from scalarizr.externals.collections import OrderedDict
 from scalarizr.libs.metaconf import ParseError
 from scalarizr.libs.metaconf.utils import indent
@@ -20,19 +20,19 @@ from yaml.emitter import Emitter
 from yaml.serializer import Serializer
 from yaml.nodes import ScalarNode
 from yaml import load, dump
- 
+
 import sys
 import inspect
 import re
 from . import FormatProvider
- 
+
 if sys.version_info[0:2] >= (2, 7):
     from xml.etree import ElementTree as ET
 else:
     from scalarizr.externals.etree import ElementTree as ET
- 
+
 class YamlFormatProvider(FormatProvider):
- 
+
     def create_element(self, etree, path, value):
         el = FormatProvider.create_element(self, etree, path, value)
         existed_el = etree.find(path)
@@ -40,27 +40,27 @@ class YamlFormatProvider(FormatProvider):
             existed_el.attrib['mc_type'] = 'list_element'
             el.attrib['mc_type'] = 'list_element'
         return el
- 
+
     def read(self, fp):
         raw_cfg = fp.read()
         try:
             dict_cfg = load(raw_cfg, Loader = DoublesafeLoader)
         except (Exception, BaseException), e:
             raise ParseError([e])
- 
+
         root = ET.Element('mc_conf')
         convert_dict_to_xml(root, dict_cfg)
- 
+
         indent(root)
         return [node for node in root]
- 
+
     def write(self, fp, etree, close):
         dict_cfg = convert_xml_to_dict(etree.getroot())
         raw_cfg = dump(dict_cfg, Dumper=DoublesafeDumper, default_flow_style=False)
         fp.write(raw_cfg)
         if close:
             fp.close()
- 
+
 class DoublesafeConstructor(SafeConstructor):
     def construct_mapping(self, node, deep=False):
         if not isinstance(node, MappingNode):
@@ -78,13 +78,13 @@ class DoublesafeConstructor(SafeConstructor):
             value = self.construct_object(value_node, deep=deep)
             mapping[key] = value
         return mapping
- 
+
     def construct_yaml_map(self, node):
         data = OrderedDict()
         yield data
         value = self.construct_mapping(node)
         data.update(value)
- 
+
     def construct_yaml_float(self, node):
         value = str(self.construct_scalar(node))
         value = value.replace('_', '').lower()
@@ -108,15 +108,15 @@ class DoublesafeConstructor(SafeConstructor):
             return sign*value
         else:
             return '%s%g' % (str(sign)[0], float(value))
- 
+
 DoublesafeConstructor.add_constructor(
             u'tag:yaml.org,2002:map',
             DoublesafeConstructor.construct_yaml_map)
- 
+
 DoublesafeConstructor.add_constructor(
         u'tag:yaml.org,2002:float',
         DoublesafeConstructor.construct_yaml_float)
- 
+
 class DoublesafeLoader(Reader, Scanner, Parser, Composer, DoublesafeConstructor, Resolver):
     def __init__(self, stream):
         Reader.__init__(self, stream)
@@ -125,7 +125,7 @@ class DoublesafeLoader(Reader, Scanner, Parser, Composer, DoublesafeConstructor,
         Composer.__init__(self)
         DoublesafeConstructor.__init__(self)
         Resolver.__init__(self)
- 
+
 class DoublesafeRepresenter(Representer):
     def represent_mapping(self, tag, mapping, flow_style=None):
         value = []
@@ -149,15 +149,15 @@ class DoublesafeRepresenter(Representer):
             else:
                 node.flow_style = best_style
         return node
- 
+
     def represent_none(self, data):
         return self.represent_scalar(u'tag:yaml.org,2002:null',
                         u'')
- 
+
 DoublesafeRepresenter.add_representer(OrderedDict, SafeRepresenter.represent_dict)
 DoublesafeRepresenter.add_representer(type(None), DoublesafeRepresenter.represent_none)
- 
- 
+
+
 class DoublesafeEmitter(Emitter):
     def write_single_quoted(self, text, split=True):
         self.write_indicator(u'', True)
@@ -212,9 +212,9 @@ class DoublesafeEmitter(Emitter):
                 breaks = (ch in u'\n\x85\u2028\u2029')
             end += 1
         #self.write_indicator(u'\'', False)
- 
+
 class DoublesafeDumper(DoublesafeEmitter, Serializer, DoublesafeRepresenter, Resolver):
- 
+
     def __init__(self, stream,
                     default_style=None, default_flow_style=None,
                     canonical=None, indent=None, width=None,
@@ -230,9 +230,9 @@ class DoublesafeDumper(DoublesafeEmitter, Serializer, DoublesafeRepresenter, Res
         DoublesafeRepresenter.__init__(self, default_style=default_style,
                         default_flow_style=default_flow_style)
         Resolver.__init__(self)
- 
+
 def convert_dict_to_xml(parent, dict_cfg):
- 
+
     if isinstance(dict_cfg, dict):
         for (key, value) in dict_cfg.iteritems():
             if type(value) == list:
@@ -250,13 +250,13 @@ def convert_dict_to_xml(parent, dict_cfg):
                     elem.text = value
     else:
         parent.text = dict_cfg
- 
+
 def convert_xml_to_dict(root):
     if not len(root):
         return root.text
- 
+
     res = OrderedDict()
- 
+
     for node in root:
         if 'mc_type' in node.attrib and node.attrib['mc_type'] == 'list_element':
             if not node.tag in res:
@@ -264,6 +264,5 @@ def convert_xml_to_dict(root):
             res[node.tag].append(convert_xml_to_dict(node))
         else:
             res[node.tag] = convert_xml_to_dict(node)
- 
+
     return res
- 

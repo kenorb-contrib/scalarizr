@@ -1,28 +1,28 @@
 from __future__ import with_statement
- 
+
 import logging
 import re
 import operator
 import Queue
 import sys
 import threading
- 
+
 from scalarizr import linux
- 
- 
+
+
 LOG = logging.getLogger(__name__)
- 
- 
+
+
 volume_types = dict()
 snapshot_types = dict()
 filesystem_types = dict()
- 
- 
+
+
 def volume(*args, **kwds):
     """
     Takes volume configuration or volume instance, returns volume instance
     """
- 
+
     if args:
         if isinstance(args[0], dict):
             return volume(**args[0])
@@ -43,8 +43,8 @@ def volume(*args, **kwds):
                         "Have you registered it in storage2.volume_types?" % type_
         raise KeyError(msg)
     return cls(**kwds)
- 
- 
+
+
 def snapshot(*args, **kwds):
     """
     Takes snapshot configuration or snapshot instance, returns snapshot instance
@@ -67,8 +67,8 @@ def snapshot(*args, **kwds):
                         "Have you registered it in storage2.snapshot_types?" % type_
         raise KeyError(msg)
     return cls(**kwds)
- 
- 
+
+
 def filesystem(fstype=None):
     """
     :return: Filesystem object
@@ -87,8 +87,8 @@ def filesystem(fstype=None):
                         "Have you registered it in storage2.filesystem_types?" % fstype
         raise KeyError(msg)
     return cls()
- 
- 
+
+
 def concurrent_snapshot(volumes, description, tags=None, **kwds):
     '''
     Concurrently calls vol.snapshot() and
@@ -104,7 +104,7 @@ def concurrent_snapshot(volumes, description, tags=None, **kwds):
             LOG.warn('Failed to create snapshot of %s(%s): %s',
                             vol.id, vol.type, exc_info[1], exc_info=exc_info)
             results.append((0, index, exc_info))
- 
+
     threads = []
     index = 0
     for vol in volumes:
@@ -120,10 +120,10 @@ def concurrent_snapshot(volumes, description, tags=None, **kwds):
         thread.start()
         threads.append(thread)
         index += 1
- 
+
     for thread in threads:
         thread.join()
- 
+
     # sort results by index
     results = sorted(results, key=operator.itemgetter(1))
     if not all((r[0] for r in results)):
@@ -142,24 +142,24 @@ def concurrent_snapshot(volumes, description, tags=None, **kwds):
                         'Successfuly created snapshots were deleted to rollback. '
                         'See log for detailed report about each failed snapshot')
     return tuple(r[2] for r in results)
- 
- 
+
+
 class StorageError(linux.LinuxError):
     pass
- 
- 
+
+
 class NoOpError(StorageError):
     pass
- 
+
 class VolumeNotExistsError(StorageError):
     def __str__(self):
         return ('Volume not found: {0}. Most likely it was deleted. '
             'You can check "Regenerate storage if missing volumes" in UI '
             'to create clean storage volume with the same settings').format(self.args[0])
- 
+
 class OperationError(StorageError):
     pass
- 
+
 RHEL_DEVICE_ORDERING_BUG = False
 if linux.os['release'] and linux.os['family'] == 'RedHat':
     # Check that system is affected by devices ordering bug
@@ -170,4 +170,3 @@ if linux.os['release'] and linux.os['family'] == 'RedHat':
         RHEL_DEVICE_ORDERING_BUG = entry.mpoint == '/'
     except KeyError:
         pass
- 

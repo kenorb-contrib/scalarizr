@@ -2,40 +2,41 @@ import os
 import logging
 import shutil
 import json
- 
- 
+
+
 from scalarizr import handlers, linux
+from scalarizr.bus import bus
 from scalarizr.node import __node__
 from scalarizr.linux import pkgmgr, iptables
 from scalarizr.bus import bus
- 
- 
+
+
 LOG = logging.getLogger(__name__)
- 
- 
+
+
 def get_handlers():
     return [RouterHandler()]
- 
- 
+
+
 class RouterHandler(handlers.Handler):
- 
+
     def __init__(self):
         self._data = None
         bus.on(init=self.on_init, start=self.on_start)
         super(RouterHandler, self).__init__()
- 
+
     def on_init(self):
         bus.on(
             host_init_response=self.on_host_init_response,
             before_host_up=self.on_before_host_up
         )
- 
+
     def on_host_init_response(self, hir):
         """
         Accept HostInitResponse configuration
- 
+
         .. code-block:: xml
- 
+
             <router>
                 <cidr>10.0.0.0/16</cidr>
                 <whitelist>
@@ -48,18 +49,23 @@ class RouterHandler(handlers.Handler):
             msg = "HostInitResponse message for Router behavior " \
                         "must have 'router' property"
             raise handlers.HandlerError(msg)
- 
+
         self._data = hir.router
- 
+
     def on_start(self):
         if __node__['state'] == 'running':
-            self._configure()
- 
+            lfrp = bus.queryenv_service.list_farm_role_params(farm_role_id=__node__['farm_role_id'])['params']
+            self._data = lfrp.get('router', {})
+            if self._data:
+                self._configure()
+            else:
+                linux.system('/etc/init.d/nginx start', shell=True, raise_exc=False)
+
     def on_before_host_up(self, hostup):
         self._configure()
- 
+
     def _configure(self):
-        pkgmgr.installed('augeas-tools' if linux.os['family'] == 'Debian' else 'augeas')
+        pkgmgr.installed('augeas-tools' if linux.os['family'] == 'Debian' else 'augeas', updatedb=True)
         augscript = '\n'.join([
             'set /files/etc/sysctl.conf/net.ipv4.ip_forward 1',
             'rm /files/etc/sysctl.conf/net.bridge.bridge-nf-call-ip6tables',
@@ -69,7 +75,7 @@ class RouterHandler(handlers.Handler):
         ])
         linux.system(('augtool',), stdin=augscript) 
         linux.system(('sysctl', '-p'))
- 
+
         if self._data.get('cidr'):
             iptables.ensure({'POSTROUTING': [{
                 'table': 'nat', 
@@ -77,7 +83,7 @@ class RouterHandler(handlers.Handler):
                 'not_destination': self._data['cidr'],
                 'jump': 'MASQUERADE'
                 }]})
- 
+
         solo_home = '/tmp/chef'
         solo_rb = '%s/solo.rb' % solo_home
         solo_attr = '%s/attr.json' % solo_home
@@ -100,5 +106,4 @@ class RouterHandler(handlers.Handler):
             )
         linux.system(('chef-solo', '-c', solo_rb, '-j', solo_attr), 
                 close_fds=True, preexec_fn=os.setsid, log_level=logging.INFO)
- 
- 
+

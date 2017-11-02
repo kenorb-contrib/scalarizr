@@ -1,11 +1,11 @@
 from __future__ import with_statement
 '''
 Created on Nov 8, 2011
- 
+
 @author: dmitry
 '''
 from __future__ import with_statement
- 
+
 import os
 import logging
 import re
@@ -19,24 +19,25 @@ import time
 import shutil
 import socket
 import errno
- 
- 
+
+
 from pymysql import cursors
- 
+
 from scalarizr import node
 from scalarizr.config import BuiltinBehaviours
 from scalarizr.services import  BaseService, ServiceError, BaseConfig, lazy, PresetProvider
-from scalarizr.util import system2, disttool, firstmatched, initdv2, wait_until, PopenError, software
+from scalarizr.util import system2, firstmatched, initdv2, wait_until, PopenError, software
 from scalarizr.util.initdv2 import wait_sock, InitdError
 from scalarizr import linux
 from scalarizr.linux.coreutils import chown_r
 from scalarizr.libs import metaconf
 from scalarizr.linux.rsync import rsync
 from scalarizr.linux import pkgmgr
- 
- 
+from scalarizr.util import Singleton
+
+
 LOG = logging.getLogger(__name__)
- 
+
 MYSQL_DEFAULT_PORT=3306
 MYSQL_PATH  = '/usr/bin/mysql' # old mysql_path
 MYCNF_PATH      = '/etc/mysql/my.cnf' if linux.os.debian_family else '/etc/my.cnf'
@@ -49,82 +50,82 @@ STORAGE_BINLOG = "mysql-misc/binlog"
 SU_EXEC = '/bin/su'
 BASH = '/bin/bash'
 PRESET_FNAME = 'my.cnf'
- 
+
 BEHAVIOUR = SERVICE_NAME = BuiltinBehaviours.MYSQL
- 
- 
+
+
 class MySQL(BaseService):
- 
+
     service = None
     my_cnf = None
     _instance = None
- 
- 
+
+
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
             cls._instance = super(MySQL, cls).__new__(
                                                     cls, *args, **kwargs)
         return cls._instance
- 
- 
+
+
     def __init__(self):
         self._objects = {}
         self.service = initdv2.lookup(SERVICE_NAME)
         if not os.path.exists(MYCNF_PATH):
-            if disttool.is_redhat_based() and os.path.exists('/usr/share/mysql/my-medium.cnf'):
+            if linux.os.redhat_family and os.path.exists('/usr/share/mysql/my-medium.cnf'):
                 shutil.copy('/usr/share/mysql/my-medium.cnf', MYCNF_PATH)
             else:
                 fp = open(MYCNF_PATH, 'w')
                 fp.write('[mysqld]')
                 fp.close()
- 
- 
+
+
     def _init_replication(self, master=True):
         LOG.info('Initializing replication')
         server_id = 1 if master else int(random.random() * 100000)+1
         self.my_cnf.server_id = server_id
         self.my_cnf.delete_options(['mysqld/bind-address', 'mysqld/skip-networking'])
- 
- 
+
+
     def init_master(self):
         pass
- 
+
     def init_slave(self):
         pass
- 
+
     def _init_service(self):
         pass
- 
+
     def change_master_to(self):
         # client.change_master_to
         # check_replication_health and wait
         pass
- 
+
     def check_replication_health(self):
         # set slave status
         # on fail get status from error.log
         pass
- 
+
     @property
     def version(self):
         #5.1/5.5
         #percona/mysql
         pass
- 
- 
+
+
     def move_mysqldir_to(self, storage_path):
         LOG.info('Moving mysql dir to %s' % storage_path)
         for directive, dirname in (
                         ('mysqld/log_bin', os.path.join(storage_path,STORAGE_BINLOG)),
                         ('mysqld/datadir', os.path.join(storage_path,STORAGE_DATA_DIR) + '/')
                         ):
- 
+
             dest = os.path.dirname(dirname)
             if os.path.isdir(dest):
                 LOG.info('No need to move %s to %s: already in place.' % (directive, dest))
             else:
                 os.makedirs(dest)
- 
+
                 raw_value = self.my_cnf.get(directive)
                 LOG.debug('directive %s:%s' % (directive, raw_value))
                 if raw_value and node.__node__['platform'] != 'openstack':
@@ -141,50 +142,50 @@ class MySQL(BaseService):
                                     semanage = get_semanage()
                                     system2((semanage, 'fcontext', '-a', '-t', 'bin_t', '/usr/bin/rsync'))
                                     system2((software.which('restorecon'), '-v', '/usr/bin/rsync'))
- 
+
                         LOG.info('Copying mysql directory \'%s\' to \'%s\'', src_dir, dest)
                         rsync(src_dir, dest, archive=True, exclude=['ib_logfile*', '*.sock'])
- 
+
             self.my_cnf.set(directive, dirname)
             chown_r(dest, "mysql", "mysql")
             # Adding rules to apparmor config
-            if disttool.is_debian_based():
+            if linux.os.debian_family:
                 _add_apparmor_rules(dest)
- 
- 
+
+
     def flush_logs(self, data_dir):
         LOG.info('Flushing logs')
         if not os.path.exists(data_dir):
             return
- 
+
         info_files = ['relay-log.info', 'master.info']
         files = os.listdir(data_dir)
- 
+
         for file in files:
             if file in info_files or file.find('relay-bin') != -1:
                 os.remove(os.path.join(data_dir, file))
- 
- 
+
+
     def _get_my_cnf(self):
         return self._get('my_cnf', MySQLConf.find)
- 
- 
+
+
     def _set_my_cnf(self, obj):
         self._set('my_cnf', obj)
- 
- 
+
+
     my_cnf = property(_get_my_cnf, _set_my_cnf)
- 
- 
+
+
 class MySQLClient(object):
     _pool = dict()
- 
+
     def __init__(self, user=None, passwd=None, db=None):
         self.db = db
         self.user = user
         self.passwd = passwd or ''
- 
- 
+
+
     def test_connection(self):
         LOG.debug('Checking MySQL service status')
         try:
@@ -198,8 +199,8 @@ class MySQLClient(object):
             LOG.debug('test_connection returned error: %s' % e)
             raise
         return True
- 
- 
+
+
     def list_databases(self):
         out = self.fetchall('SHOW DATABASES')
         LOG.debug('databases: %s' % str(out))
@@ -209,36 +210,36 @@ class MySQLClient(object):
         if 'performance_schema' in databases:
             databases.remove('performance_schema')
         return databases
- 
- 
+
+
     def start_slave(self):
         return self.fetchone('START SLAVE')
- 
- 
+
+
     def stop_slave(self):
         return self.fetchone("STOP SLAVE")
- 
- 
+
+
     def reset_slave(self):
         return self.fetchone("RESET SLAVE")
- 
- 
+
+
     def stop_slave_io_thread(self):
         return self.fetchone("STOP SLAVE IO_THREAD")
- 
- 
+
+
 	def start_slave_io_thread(self):
 		return self.fetchone("START SLAVE IO_THREAD")
- 
- 
+	
+	
     def lock_tables(self):
         return self.fetchone('FLUSH TABLES WITH READ LOCK')
- 
- 
+
+
     def unlock_tables(self):
         return self.fetchone('UNLOCK TABLES')
- 
- 
+
+
     def create_user(self, login, host, password, privileges=None):
         priv_count = self._priv_count()
         if not privileges:
@@ -246,7 +247,10 @@ class MySQLClient(object):
             XXX: temporary solution for mysql55
             '''
             cmd = "INSERT INTO mysql.user VALUES('%s','%s',PASSWORD('%s')" % (host, login, password) + ",'Y'"*priv_count
-            if len(self.fetchdict("select * from mysql.user LIMIT 1;")) == 42:
+            column_count = len(self.fetchdict("select * from mysql.user LIMIT 1;"))
+            if column_count == 43:
+                cmd += ",'','','','',0,0,0,0,'','','N'"
+            elif column_count == 42:
                 cmd += ",'','','','',0,0,0,0,'',''"
             else:
                 cmd += ",''"*4 +',0'*4
@@ -256,24 +260,24 @@ class MySQLClient(object):
                             % (', '.join(privileges), host,login,password, ', '.join(["'Y'"]*len(privileges)))
         self.fetchone(cmd)
         self.flush_privileges()
- 
- 
+
+
     def remove_user(self, login, host):
         return self.fetchone("DELETE FROM mysql.user WHERE User='%s' and Host='%s'" % (login, host))
- 
- 
+
+
     def user_exists(self, login, host):
         ret = self.fetchone("select User,Host from mysql.user where User='%s' and Host='%s'" % (login, host))
         result = ret and len(ret)==2 and ret[0]==login and ret[1]==host
         LOG.debug('user_exists query returned value: %s for user %s on host %s. User exists: %s' % (str(ret), login, host, str(result)))
         return result
- 
+
     def set_user_password(self, username, host, password):
         return self.fetchone("UPDATE mysql.user SET Password=PASSWORD('%s') WHERE User='%s' AND Host='%s';" % (password, username, host))
- 
+
     def flush_privileges(self):
         return self.fetchone("FLUSH PRIVILEGES")
- 
+
     def change_master_to(self, host, user, password, log_file, log_pos):
         return self.fetchone('CHANGE MASTER TO MASTER_HOST="%(host)s", \
                                         MASTER_USER="%(user)s", \
@@ -281,8 +285,8 @@ class MySQLClient(object):
                                         MASTER_LOG_FILE="%(log_file)s", \
                                         MASTER_LOG_POS=%(log_pos)s, \
                                         MASTER_CONNECT_RETRY=15;' % vars())
- 
- 
+
+
     def slave_status(self):
         ret = self.fetchdict("SHOW SLAVE STATUS")
         LOG.debug('slave status: %s' % str(ret))
@@ -290,20 +294,20 @@ class MySQLClient(object):
             return ret
         else:
             raise ServiceError('SHOW SLAVE STATUS returned empty set. Slave is not started?')
- 
- 
+
+
     def master_status(self):
         out = self.fetchdict('SHOW MASTER STATUS')
         log_file, log_pos = None, None
         if out:
             log_file, log_pos = out['File'], out['Position']
         return (log_file, log_pos)
- 
- 
+
+
     def reset_master(self):
         return self.fetchone("RESET MASTER")
- 
- 
+
+
     def show_global_variables(self):
         d = {}
         raw = self.fetchdict('SHOW GLOBAL VARIABLES', fetch_one=False)
@@ -313,39 +317,39 @@ class MySQLClient(object):
             val = row['Value']
             d[name] = val
         return d
- 
+
     def check_password(self, user, password):
         hash_pairs = self.fetchall("SELECT PASSWORD('%s') AS hash, Password AS valid_hash FROM mysql.user WHERE mysql.user.User = '%s';" %
                         (password, user))
- 
+
         for pair in hash_pairs:
             if pair[0] != pair[1]:
                 return False
- 
+
         return True
- 
- 
+
+
     def version(self):
         return self.fetchone('SELECT VERSION()')
- 
+
     def reconnect(self):
         self._pool[self.creds] = pymysql.connect(host="127.0.0.1", user=self.user, passwd=self.passwd, db=self.db)
- 
+
     @property
     def creds(self):
         return (self.user, self.passwd, self.db)
- 
+
     def get_connection(self, force=False):
         if force or not self.creds in self._pool:
             self.reconnect()
         return self._pool[self.creds]
- 
- 
+
+
     def _priv_count(self):
         res = self.fetchdict("select * from mysql.user LIMIT 1;")
         return len([r for r in res.keys() if r.endswith('priv')])
- 
- 
+
+
     def _fetch(self, query, cursor_type = None, fetch_one=False):
         conn = self.get_connection()
         cur = conn.cursor(cursor_type)
@@ -366,49 +370,49 @@ class MySQLClient(object):
                 raise
         res = cur.fetchone() if fetch_one else cur.fetchall()
         return res
- 
- 
+
+
     def fetchdict(self, query, fetch_one=True):
         return self._fetch(query, cursors.DictCursor, fetch_one)
- 
- 
+
+
     def fetchall(self, query):
         return self._fetch(query)
- 
- 
+
+
     def fetchone(self, query):
         return self._fetch(query, fetch_one=True)
- 
- 
+
+
 class MySQLUser(object):
- 
+
     login = None
     password = None
     host = None
     privileges = None
- 
+
     def __init__(self, client, login, password=None, host=None, privileges=None):
         self.cli = client
         self.login = login
         self.password = password
         self.host = host
         self.privileges = privileges
- 
- 
+
+
     def create(self):
         if self.exists():
             raise ServiceError('Unable to create user %s@%s: already exists.')
         LOG.debug('Creating user %s on host %s with password %s and privileges %s' % (self.login, self.host, self.password, self.privileges))
         self.cli.create_user(self.login, self.host, self.password, self.privileges)
         return self
- 
- 
+
+
     def check_password(self):
         if not self.exists():
             return False
         return self.cli.check_password(self.login, self.password)
- 
- 
+
+
     def exists(self):
         result = False
         try:
@@ -416,33 +420,33 @@ class MySQLUser(object):
         except pymysql.err.OperationalError, e:
             raise ServiceError(str(e))
         return result
- 
- 
+
+
     def remove(self):
         return self.cli.remove_user(self.login, self.host)
- 
- 
- 
+
+
+
 class DataDir(object):
- 
+
     def __init__(self):
         pass
- 
+
     def move_to(self, dst):
         pass
- 
- 
+
+
 class MySQLConf(BaseConfig):
- 
+
     config_type = 'mysql'
     config_name = 'my.cnf'
- 
- 
+
+
     @classmethod
     def find(cls):
         return cls(MYCNF_PATH)
- 
- 
+
+
     def __init__(self, path, autosave=True):
         super(MySQLConf, self).__init__(path, autosave=True)
         self.data = metaconf.Configuration(self.config_type)
@@ -455,87 +459,87 @@ class MySQLConf(BaseConfig):
         finally:
             # WHY?
             self.data = None
- 
- 
+
+
     def _get_datadir(self):
         return self.get('mysqld/datadir')
- 
- 
+
+
     def _set_datadir(self, path):
         if not path:
             raise BaseException('Datadir value cannot be empty')
         self.set('mysqld/datadir', path)
- 
- 
+
+
     def _get_log_bin(self):
         return self.get('mysqld/log_bin')
- 
- 
+
+
     def _set_log_bin(self, path):
         self.set('mysqld/log_bin', path)
- 
- 
+
+
     def _get_server_id(self):
         return self.get('mysqld/server-id')
- 
- 
+
+
     def _set_server_id(self, id):
         self.set('mysqld/server-id', id)
- 
- 
+
+
     def _get_bind_address(self):
         return self.get('mysqld/bind-address')
- 
- 
+
+
     def _set_bind_address(self, addr):
         self.set('mysqld/bind-address', addr)
- 
- 
+
+
     def _get_skip_networking(self):
         return self.get('mysqld/skip-networking')
- 
- 
+
+
     def _set_skip_networking(self, val):
         self.set('mysqld/skip-networking', val)
- 
- 
+
+
     def _get_expire_logs_days(self):
         return self.get('mysqld/expire_logs_days')
- 
- 
+
+
     def _set_expire_logs_days(self, val):
         self.set('mysqld/expire_logs_days', val)
- 
- 
+
+
     def _get_skip_locking(self):
         return self.get('mysqld/skip-locking')
- 
- 
+
+
     def _set_skip_locking(self, val):
         self.set('mysqld/skip-locking', val)
- 
- 
+
+
     def _get_read_only(self):
         return self.get('mysqld/read_only')
- 
- 
+
+
     def _set_read_only(self, val):
         self.set('mysqld/read_only', val)
- 
+
     def _get_socket(self):
         return self.get('mysqld/socket')
- 
- 
+
+
     def _set_socket(self, path):
         self.set('mysqld/socket', path)
- 
+
     def _get_pid_file(self):
         return self.get('mysqld/pid-file')
- 
- 
+
+
     def _set_pid_file(self, path):
         self.set('mysqld/pid-file', path)
- 
+
     log_bin = property(_get_log_bin, _set_log_bin)
     server_id = property(_get_server_id, _set_server_id)
     bind_address = property(_get_bind_address, _set_bind_address)
@@ -547,55 +551,55 @@ class MySQLConf(BaseConfig):
     datadir_default = DEFAULT_DATADIR
     socket = property(_get_socket, _set_socket)
     pid_file = property(_get_pid_file, _set_pid_file)
- 
- 
- 
+
+
+
 class MySQLDump(object):
- 
+
     host = None
     port = None
- 
+
     def __init__(self, root_user=None, root_password=None):
         self.root_user = root_user or 'root'
         self.root_password = root_password or ''
- 
+
     def create(self, dbname, filename, opts=None, mysql_upgrade=True):
         _opts = opts and list(opts) or []
         LOG.debug('Dumping database %s to %s' % (dbname, filename))
         _opts = [MYSQLDUMP_PATH, '-u', self.root_user, '--password='+self.root_password] + opts + ['--databases']
         with open(filename, 'w') as fp:
             system2(_opts + [dbname], stdout=fp)
- 
- 
+
+
 class RepicationWatcher(threading.Thread):
- 
- 
+
+
     _state = None
     _client = None
     _master_host = None
     _repl_user = None
     _repl_password = None
- 
- 
+
+
     WATCHER_RUNNING = 'running'
     WATCHER_STOPPED = 'stopped'
     TIMEOUT = 60
- 
- 
+
+
     def __init__(self, client, master_host, repl_user, repl_password):
         super(RepicationWatcher, self).__init__()
         self._client = client
         self.change_master_host(master_host, repl_user, repl_password)
- 
- 
+
+
     def change_master_host(self, host, user, password):
         self.suspend()
         self._master_host = host
         self._repl_user = user
         self._repl_password = password
         self.resume()
- 
- 
+
+
     def start(self):
         self.resume()
         while True:
@@ -605,13 +609,13 @@ class RepicationWatcher(threading.Thread):
                     r_status = self._client.slave_status()
                 except ServiceError, e:
                     LOG.error(e)
- 
+
                 if not r_status:
                     time.sleep(self.TIMEOUT)
- 
+
                 elif r_status['Slave_IO_Running'] == 'Yes' and r_status['Slave_SQL_Running'] == 'Yes':
                     time.sleep(self.TIMEOUT)
- 
+
                 elif r_status and r_status['Slave_SQL_Running'] == 'No' and \
                                         'Relay log read failure: Could not parse relay log event entry' in r_status['Last_Error']:
                     self.repair_relaylog(r_status['Relay_Master_Log_File'], r_status['Exec_Master_Log_Pos'])
@@ -624,7 +628,7 @@ class RepicationWatcher(threading.Thread):
                                                     r_status['Last_Error']
                                                     )
                     LOG.error(msg)
- 
+
     def repair_relaylog(self, log_file, log_pos):
         LOG.info('Repairing relay log')
         try:
@@ -637,43 +641,51 @@ class RepicationWatcher(threading.Thread):
             LOG.error(e)
         else:
             LOG.info('Relay log has been repaired')
- 
- 
+
+
     def resume(self):
         self._state = self.WATCHER_RUNNING
- 
- 
+
+
     def suspend(self):
         self._state = self.WATCHER_STOPPED
- 
- 
- 
+
+
+
 class MysqlInitScript(initdv2.ParametrizedInitScript):
- 
+
     socket_file = None
     cli = None
     sgt_pid_path = '/tmp/mysqld-sgt.pid'
- 
- 
+
+
     @lazy
     def __new__(cls, *args, **kws):
         obj = super(MysqlInitScript, cls).__new__(cls, *args, **kws)
         cls.__init__(obj)
         return obj
- 
- 
+
+
     def __init__(self):
         if 'gce' == node.__node__['platform'].name:
             self.ensure_pid_directory()
- 
+
         self.mysql_cli = MySQLClient()
- 
- 
-        if disttool.is_ubuntu() and disttool.version_info() >= (10, 4):
-            initd_script = ('/usr/sbin/service', 'mysql')
+
+        service_exec = '/usr/sbin/service' if linux.os.debian_family else '/sbin/service'
+        service_name = 'mysql'
+        if linux.os.redhat_family:
+            if  linux.os['release'] >= (7, 0) and \
+                    system2('systemctl list-unit-files | grep mariadb', raise_exc=False, shell=True)[2] == 0:
+                service_name = 'mariadb'
+            elif 'percona' not in node.__node__['behavior']:
+                service_name = 'mysqld'
+
+        if linux.os.redhat_family or linux.os.ubuntu:
+            initd_script = (service_exec, service_name)
         else:
-            initd_script = firstmatched(os.path.exists, ('/etc/init.d/mysqld', '/etc/init.d/mysql'))
- 
+            initd_script = '/etc/init.d/{0}'.format(service_name)
+
         pid_file = None
         try:
             out = system2("my_print_defaults mysqld", shell=True, silent=True)
@@ -685,23 +697,27 @@ class MysqlInitScript(initdv2.ParametrizedInitScript):
                 self.socket_file = m.group(1)
         except:
             pass
- 
+
         initdv2.ParametrizedInitScript.__init__(self, SERVICE_NAME,
                         initd_script, pid_file, socks=[initdv2.SockParam(MYSQL_DEFAULT_PORT, timeout=3600)])
- 
- 
+
+
     def _start_stop_reload(self, action):
         ''' XXX: Temporary ugly hack (Ubuntu 1004 upstart problem - Job is already running)'''
-        try:
-            args = [self.initd_script] \
-                            if isinstance(self.initd_script, basestring) \
-                            else list(self.initd_script)
-            args.append(action)
-            out, err, returncode = system2(args, close_fds=True, preexec_fn=os.setsid)
-        except PopenError, e:
-            if 'Job is already running' not in str(e):
-                raise InitdError("Popen failed with error %s" % (e,))
- 
+        args = [self.initd_script] \
+                        if isinstance(self.initd_script, basestring) \
+                        else list(self.initd_script)
+        args.append(action)
+        # SCALARIZR-1851 debug {
+        #env = os.environ.copy()
+        #env['DEBIAN_SCRIPT_DEBUG'] = '1'
+        # }
+        out, err, returncode = system2(args, close_fds=True, preexec_fn=os.setsid, raise_exc=False)
+        if returncode and ( \
+                'Job is already running' not in err and \
+                'percona' not in node.__node__['behavior']):
+            raise InitdError("Popen failed with error: %s" % (err,))
+
         if action == 'restart':
             if err and 'stop: Job has already been stopped: mysql' in err:
                 return True
@@ -709,8 +725,8 @@ class MysqlInitScript(initdv2.ParametrizedInitScript):
                 LOG.debug('waiting for mysql process')
                 wait_until(lambda: MYSQLD_PATH in system2(('ps', '-G', DEFAULT_OWNER, '-o', 'command', '--no-headers'))[0]
                         , timeout=10, sleep=1)
- 
-        if action == 'start' and disttool.is_ubuntu() and disttool.version_info() >= (10, 4):
+
+        if action == 'start' and linux.os.ubuntu and linux.os['version'] >= (10, 4):
             try:
                 LOG.debug('waiting for mysql process')
                 wait_until(lambda: MYSQLD_PATH in system2(('ps', '-G', DEFAULT_OWNER, '-o', 'command', '--no-headers'))[0]
@@ -723,50 +739,25 @@ class MysqlInitScript(initdv2.ParametrizedInitScript):
             except:
                 self._start_stop_reload('restart')
                 return True
- 
+
         if self.socks and (action != "stop" and not (action == 'reload' and not self.running)):
             for sock in self.socks:
                 wait_sock(sock)
- 
+
         return True
- 
- 
+
+
     def status(self):
         return initdv2.Status.RUNNING if self.mysql_cli.test_connection() else initdv2.Status.NOT_RUNNING
- 
- 
-    def _get_mysql_logerror_path(self):
-        cmd = 'my_print_defaults mysqld | grep log_error'
-        out = system2(cmd, shell=True, raise_exc=False)[0]
-        return out.split('=')[1] if out else '/var/log/mysql/error.log'
- 
- 
-    def _get_mysql_error(self):
-        error = ''
-        cmd = "cat %s | tail -256" % self._get_mysql_logerror_path()
-        content = reversed(system2(cmd, shell=True, raise_exc=False)[0].split('\n'))
-        start = re.compile("^.*[ ]Fatal error:[ ].*$")
-        end = re.compile(r'^[0-9]{6}[ ][0-9]{2}:[0-9]{2}:[0-9]{2}[ ]\[?ERROR\]?[ ]Aborting$')
-        for line in content:
-            if end.match(line):
-                error = '%s\n' % line + error
-                while not start.match(line):
-                    try:
-                        line = content.next()
-                    except StopIteration:
-                        break
-                    error = '%s\n' % line + error
-                break
-        return error
- 
- 
+
+
     def start(self):
         '''
         Commented, cause Dima said this code is useless
- 
+
         # FIXME: This condition here because of the following fixme
         if os.listdir('/mnt/dbstorage/mysql-data'):
- 
+
                 # FIXME: It's not a good place to test mysql configuration
                 # This code fails when datadir is empty, whereas init script detects this and start gracefully
                 mysql_cnf_err_re = re.compile('Unknown option|ERROR')
@@ -774,42 +765,38 @@ class MysqlInitScript(initdv2.ParametrizedInitScript):
                 if re.search(mysql_cnf_err_re, stderr):
                         raise Exception('Error in mysql configuration detected. Output:\n%s' % stderr)
         '''
- 
+
         if not self.running:
             try:
                 LOG.info("Starting mysql")
                 initdv2.ParametrizedInitScript.start(self)
                 LOG.debug("mysql started")
-            except Exception as e:
+            except:
                 if self._is_sgt_process_exists():
                     LOG.warning('MySQL service is running with skip-grant-tables mode.')
                 elif not self.running:
-                    error = self._get_mysql_error()
-                    if error:
-                        raise Exception('%s' % error)
-                    else:
-                        raise e
- 
- 
+                    raise Exception('Failed to start MySQL service')
+
+
     def stop(self, reason=None):
         initdv2.ParametrizedInitScript.stop(self)
- 
- 
+
+
     def restart(self, reason=None):
         initdv2.ParametrizedInitScript.restart(self)
- 
+
     def reload(self, reason=None):
         initdv2.ParametrizedInitScript.reload(self)
- 
- 
+
+
     def _is_sgt_process_exists(self):
         try:
             out = system2(('ps', '-G', DEFAULT_OWNER, '-o', 'command', '--no-headers'))[0]
             return MYSQLD_PATH in out and 'skip-grant-tables' in out
         except:
             return False
- 
- 
+
+
     def start_skip_grant_tables(self):
         pid_dir = '/var/run/mysqld/'
         if not os.path.isdir(pid_dir):
@@ -822,8 +809,8 @@ class MysqlInitScript(initdv2.ParametrizedInitScript):
             subprocess.Popen(args, stdin=subprocess.PIPE,stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
             wait_until(lambda: self._is_sgt_process_exists(), timeout=10, sleep=1)
         wait_until(lambda: self.running, timeout=600, sleep=1)
- 
- 
+
+
     def stop_skip_grant_tables(self):
         if self._is_sgt_process_exists() and os.path.exists(self.sgt_pid_path):
             sgt_pid = open(self.sgt_pid_path).read().strip()
@@ -836,8 +823,8 @@ class MysqlInitScript(initdv2.ParametrizedInitScript):
                 LOG.warning('Unable to stop mysql running with skip-grant-tables. PID not found.')
         else:
             LOG.debug('Skip stopping mysqld with a skip-grant-tables')
- 
- 
+
+
     def ensure_pid_directory(self):
         if 'CentOS' == linux.os['name']:
             '''
@@ -846,9 +833,9 @@ class MysqlInitScript(initdv2.ParametrizedInitScript):
             pid_dir = '/var/run/mysqld'
             if not os.path.exists(pid_dir):
                 os.makedirs(pid_dir)
- 
- 
- 
+
+
+
 def _add_apparmor_rules(directory):
     if not os.path.exists('/etc/init.d/apparmor'):
         return
@@ -873,8 +860,8 @@ def _add_apparmor_rules(directory):
                 apparmor_initd.reload()
             except InitdError, e:
                 LOG.error('Cannot restart apparmor. %s', e)
- 
- 
+
+
 def get_semanage():
     if linux.os['family'] == 'RedHat':
         semanage = software.which('semanage')
@@ -883,15 +870,16 @@ def get_semanage():
             mgr.install('policycoreutils-python')
             semanage = software.which('semanage')
         return semanage
- 
- 
+
+
 class MySQLPresetProvider(PresetProvider):
- 
+
+    __metaclass__ = Singleton
+
     def __init__(self):
         service = initdv2.lookup(SERVICE_NAME)
         config_mapping = {PRESET_FNAME:MySQLConf(MYCNF_PATH)}
         PresetProvider.__init__(self, service, config_mapping)
- 
- 
+
+
 initdv2.explore(SERVICE_NAME, MysqlInitScript)
- 

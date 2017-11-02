@@ -1,15 +1,15 @@
 from __future__ import with_statement
- 
+
 import sys
 import urllib2
- 
+
 from scalarizr import storage2
 from scalarizr.storage2.volumes import base
 from scalarizr.storage2.volumes import ebs
- 
- 
+
+
 class Ec2EphemeralVolume(base.Volume):
- 
+
     def __init__(self, name=None, **kwds):
         '''
         :type name: string
@@ -22,8 +22,8 @@ class Ec2EphemeralVolume(base.Volume):
                 'restore': False,
                 'detach': False
         })
- 
- 
+
+
     def _ensure(self):
         self._check_attr('name')
         try:
@@ -35,11 +35,10 @@ class Ec2EphemeralVolume(base.Volume):
             raise storage2.StorageError, msg, sys.exc_info()[2]
         else:
             self.device = ebs.name2device(device)
- 
- 
+
+
     def _snapshot(self):
         raise NotImplementedError()
- 
- 
+
+
 storage2.volume_types['ec2_ephemeral'] = Ec2EphemeralVolume
- 

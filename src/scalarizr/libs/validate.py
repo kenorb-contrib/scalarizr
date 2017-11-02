@@ -1,9 +1,9 @@
 from __future__ import with_statement
 '''
 Simple validation decorators
- 
+
 @author: marat
- 
+
 Sample usage:
 >> @validate.param('port', type=int)
 >> @validate.param('ipaddr', type='ipv4')
@@ -11,17 +11,17 @@ Sample usage:
 >> def foo(port=None, ipaddr=None, backend=None):
 ...    pass
 >>
- 
+
 IMPORTANT!
 The current limitation: all function args should have default values
 '''
- 
+
 import re
 import inspect
- 
+
 import logging
 LOG = logging.getLogger(__name__)
- 
+
 MESSAGES = {
         'type': 'Type error(%s expected): %s',
         'empty': 'Empty: %s',
@@ -29,18 +29,18 @@ MESSAGES = {
         'choises': 'Allowed values are %s: %s',
         'unknown_user_type': 'Unknown user type: %s'
 }
- 
+
 USER_TYPES = {
         'ipv4': re.compile(r'^(25[0-5]|2[0-4]\d|[0-1]?\d?\d)(\.(25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}$'),
         'ipv6': re.compile(r'^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$')
 }
- 
+
 class rule(object):
     re = None
     choises = None
     type = None
     user_type = None
- 
+
     def __init__(self, type=None, re=None, choises=None):
         #LOG.debug('Class rule.__init__:, type =%s, re=%s, choises=%s', type, re, choises)
         if isinstance(type, basestring):
@@ -56,27 +56,27 @@ class rule(object):
         self.re = re
         self.type = type
         self.choises = choises
- 
- 
+
+
 class param(object):
     names = None
     rule = None
     required = True
- 
+
     def __init__(self, *names, **kwds):
         '''
         @keyword optional: set names as optional when True.
         @type optional: bool|rule
- 
+
         @keyword required: set names as required when True.
         @type required: bool|rule
- 
+
         @keyword re: regular expression to match over
         @type re: str|re
- 
+
         @keyword choises: value choises list
         @type choies: list
- 
+
         @keyword type: value type
         @keyword type: type|str
         '''
@@ -93,17 +93,17 @@ class param(object):
             self.rule = rule(**kwds)
         #LOG.debug('self.rule = `%s`', self.rule.re)
         self.vl = []
- 
+
     '''
     def __call__(self, fn):
             LOG.debug('Class param.__call__ fn=%s', fn)
             if not isinstance(fn, _func_wrapper):
- 
+
                     fn = _func_wrapper(fn)
             fn.params.append(self)
             return fn
     '''
- 
+
     def __call__(self, fn):
         #LOG.debug('Class param.__call__ fn=%s', fn)
         if not hasattr(fn, '_validation_params'):
@@ -120,7 +120,7 @@ class param(object):
             wrapper._wrapped = True
         fn._validation_params.append(self)
         return wrapper
- 
+
 '''
 class _func_wrapper(object):
         params = None
@@ -128,7 +128,7 @@ class _func_wrapper(object):
                 LOG.debug('Class _func_wrapper.__init__ fn=%s', fn)
                 self.fn = fn
                 self.params = []
- 
+
         def __call__(self, *args, **kwds):
                 LOG.debug('Class _func_wrapper.__call__:self type=%s, args =%s, kwds=%s', type(self), args, kwds)
                 asp = inspect.getargspec(self.fn)
@@ -140,7 +140,7 @@ class _func_wrapper(object):
                 #TODO: insert here HAProxyAPI self object as first paramatr in args
                 return self.fn(**kwds)
 '''
- 
+
 def validate(values, params):
     #LOG.debug('validate:, values =%s, params=%s', values, params)
     for name, value in values.items():
@@ -148,11 +148,11 @@ def validate(values, params):
             if name in param.names:
                 if not param.required and not value:
                     break
- 
+
                 rule = param.rule
                 if param.required and not value:
                     raise ValueError(MESSAGES['empty'] % (name, ))
- 
+
                 if not rule.type:
                     try:
                         value = str(value)
@@ -164,15 +164,14 @@ def validate(values, params):
                         value = int(value)
                     except:
                         raise ValueError(MESSAGES['type'] % (rule.type, '%s, value=%s'%(name,value)))
- 
+
                 if isinstance(value, str) and rule.re and not rule.re.search(value):
                     if rule.user_type:
                         raise ValueError(MESSAGES['type'] % (rule.user_type, name))
                     else:
                         raise ValueError(MESSAGES['re'] % (rule.re.pattern, name))
                 if rule.choises and value not in rule.choises:
- 
+
                     raise ValueError(MESSAGES['choises'] % (str(rule.choises), name))
                 if rule.type and not isinstance(value, rule.type):
                     raise ValueError(MESSAGES['type'] % (rule.type.__name__, name))
- 

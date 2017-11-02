@@ -1,29 +1,29 @@
 from __future__ import with_statement
 from .. import ParseError, MetaconfError
 from ..utils import quote, unquote, indent
- 
+
 import sys
 import os
- 
+
 if sys.version_info[0:2] >= (2, 7):
     from xml.etree import ElementTree as ET
 else:
     from scalarizr.externals.etree import ElementTree as ET
- 
- 
+
+
 class FormatProvider:
     _readers = None
     _writers = None
- 
+
     def __init__(self):
         self._readers = ()
         self._writers = ()
         self._sections = []
         self._errors = []
- 
+
     def create_element(self, etree, path, value):
         return ET.Element(quote(os.path.basename(path)))
- 
+
     def read(self, fp, baseline = 0):
         """
         @return: xml.etree.ElementTree
@@ -34,12 +34,12 @@ class FormatProvider:
             self._errors = []
         self._fp = fp
         root = ET.Element("configuration")
- 
+
         toplevel = False
         if not hasattr(self, '_cursect'):
             toplevel = True
             self._cursect = root
- 
+
         try:
             while True:
                 line = self._fp.readline()
@@ -51,7 +51,7 @@ class FormatProvider:
                         break
                 else:
                     self._errors.append((self._lineno, line.strip()))
- 
+
             indent(root)
             if self._errors and not self._sections:
                 raise ParseError(self._errors)
@@ -60,7 +60,7 @@ class FormatProvider:
         finally:
             if toplevel:
                 del(self._cursect)
- 
+
     def write(self, fp, etree, close = True):
         """
         Write ElementTree <etree> to filepointer <fp>. If <close> is True - close <fp>
@@ -70,8 +70,6 @@ class FormatProvider:
                 raise MetaconfError("etree param must be instance of _ElementInterface or ElementTree. %s passed" % (etree,))
             errors = []
             toplevel = list(etree.find('.'))
-            if not len(toplevel):
-                exit
             for section in toplevel:
                 for writer in self._writers:
                     if writer(fp, section):
@@ -83,4 +81,3 @@ class FormatProvider:
         finally:
             if close:
                 fp.close()
- 

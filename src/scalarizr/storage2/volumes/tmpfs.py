@@ -1,14 +1,14 @@
 from __future__ import with_statement
- 
+
 import os
- 
+
 from scalarizr.linux import mount
 from scalarizr import storage2
 from scalarizr.storage2.volumes import base
- 
- 
+
+
 class TmpfsVolume(base.Volume):
- 
+
     def __init__(self, size=None, **kwds):
         '''
         :type size: int
@@ -19,7 +19,7 @@ class TmpfsVolume(base.Volume):
                 'invalid_size': 'Volume size required and should be int value in Mb'
         })
         self.features['restore'] = False
- 
+
     def _ensure(self):
         expr = isinstance(self.size, int) and self.size
         assert expr, self.error_messages['invalid_size']
@@ -31,7 +31,6 @@ class TmpfsVolume(base.Volume):
                             '-t', 'tmpfs',
                             '-o', 'size=%sM' % self.size)
             self.device = self.mpoint
- 
- 
+
+
 storage2.volume_types['tmpfs'] = TmpfsVolume
- 

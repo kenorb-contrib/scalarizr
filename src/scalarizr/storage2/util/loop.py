@@ -1,18 +1,17 @@
 from __future__ import with_statement
 '''
 Created on Jan 6, 2011
- 
+
 @author: marat
 '''
- 
-from scalarizr.storage2 import StorageError
-from scalarizr.linux import system
- 
+
+from scalarizr.linux import system, LinuxError
+
 import os
- 
- 
+
+
 LOSETUP_EXEC = '/sbin/losetup'
- 
+
 def mkloop(filename, device=None, size=None, quick=False):
     ''' Create loop device '''
     if size and not os.path.exists(filename):
@@ -33,7 +32,7 @@ def mkloop(filename, device=None, size=None, quick=False):
     else:
         system((LOSETUP_EXEC, device, filename))
     return device
- 
+
 def listloop():
     ret = {}
     loop_lines = system((LOSETUP_EXEC, '-a'))[0].strip().splitlines()
@@ -41,15 +40,14 @@ def listloop():
         words = loop_line.split()
         ret[words[0][:-1]] = words[-1][1:-1]
     return ret
- 
- 
+
+
 def rmloop(device):
     try:
         system((LOSETUP_EXEC, '-d', device))
-    except StorageError, e:
+    except LinuxError, e:
         if 'No such device or address' in e.err:
             ''' Silently pass non-existed loop removal '''
             pass
         else:
             raise
- 

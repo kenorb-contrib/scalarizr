@@ -47,18 +47,18 @@ from __future__ import with_statement
 # ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
 # OF THIS SOFTWARE.
 # --------------------------------------------------------------------
- 
+
 # Licensed to PSF under a Contributor Agreement.
 # See http://www.python.org/psf/license for licensing details.
- 
+
 ##
 # Implementation module for XPath support.  There's usually no reason
 # to import this module directly; the <b>ElementTree</b> does this for
 # you, if needed.
 ##
- 
+
 import re
- 
+
 xpath_tokenizer_re = re.compile(
     "("
     "'[^']*'|\"[^\"]*\"|"
@@ -70,7 +70,7 @@ xpath_tokenizer_re = re.compile(
     "((?:\{[^}]+\})?[^/\[\]\(\)@=\s]+)|"
     "\s+"
     )
- 
+
 def xpath_tokenizer(pattern, namespaces=None):
     for token in xpath_tokenizer_re.findall(pattern):
         tag = token[1]
@@ -84,7 +84,7 @@ def xpath_tokenizer(pattern, namespaces=None):
                 raise SyntaxError("prefix %r not found in prefix map" % prefix)
         else:
             yield token
- 
+
 def get_parent_map(context):
     parent_map = context.parent_map
     if parent_map is None:
@@ -93,7 +93,7 @@ def get_parent_map(context):
             for e in p:
                 parent_map[e] = p
     return parent_map
- 
+
 def prepare_child(next, token):
     tag = token[1]
     def select(context, result):
@@ -102,20 +102,20 @@ def prepare_child(next, token):
                 if e.tag == tag:
                     yield e
     return select
- 
+
 def prepare_star(next, token):
     def select(context, result):
         for elem in result:
             for e in elem:
                 yield e
     return select
- 
+
 def prepare_self(next, token):
     def select(context, result):
         for elem in result:
             yield elem
     return select
- 
+
 def prepare_descendant(next, token):
     token = next()
     if token[0] == "*":
@@ -130,7 +130,7 @@ def prepare_descendant(next, token):
                 if e is not elem:
                     yield e
     return select
- 
+
 def prepare_parent(next, token):
     def select(context, result):
         # FIXME: raise error if .. is applied at toplevel?
@@ -143,7 +143,7 @@ def prepare_parent(next, token):
                     result_map[parent] = None
                     yield parent
     return select
- 
+
 def prepare_predicate(next, token):
     # FIXME: replace with real parser!!! refs:
     # http://effbot.org/zone/simple-iterator-parser.htm
@@ -223,7 +223,7 @@ def prepare_predicate(next, token):
                     pass
         return select
     raise SyntaxError("invalid predicate")
- 
+
 ops = {
     "": prepare_child,
     "*": prepare_star,
@@ -232,19 +232,19 @@ ops = {
     "//": prepare_descendant,
     "[": prepare_predicate,
     }
- 
+
 _cache = {}
- 
+
 class _SelectorContext:
     parent_map = None
     def __init__(self, root):
         self.root = root
- 
+
 # --------------------------------------------------------------------
- 
+
 ##
 # Generate all matching objects.
- 
+
 def iterfind(elem, path, namespaces=None):
     # compile selector pattern
     if path[-1:] == "/":
@@ -277,29 +277,28 @@ def iterfind(elem, path, namespaces=None):
     for select in selector:
         result = select(context, result)
     return result
- 
+
 ##
 # Find first matching object.
- 
+
 def find(elem, path, namespaces=None):
     try:
         return iterfind(elem, path, namespaces).next()
     except StopIteration:
         return None
- 
+
 ##
 # Find all matching objects.
- 
+
 def findall(elem, path, namespaces=None):
     return list(iterfind(elem, path, namespaces))
- 
+
 ##
 # Find text for first matching object.
- 
+
 def findtext(elem, path, default=None, namespaces=None):
     try:
         elem = iterfind(elem, path, namespaces).next()
         return elem.text or ""
     except StopIteration:
         return default
- 
