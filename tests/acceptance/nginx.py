@@ -419,8 +419,8 @@ def and_i_expect_redirect_http_https(step):
 # Scenario 7
  
  
-@step(u'Given I have a proxy to two roles: master and backup')
-def given_i_have_a_proxy_to_two_roles_master_and_backup(step):
+@step(u'Given I have a proxy to two roles: main and backup')
+def given_i_have_a_proxy_to_two_roles_main_and_backup(step):
     server1_port = 8001
     server2_port = 8002
     server3_port = 8003
@@ -456,8 +456,8 @@ def given_i_have_a_proxy_to_two_roles_master_and_backup(step):
     assert world.expected_response3 not in responses
  
  
-@step(u'When I terminate master servers')
-def when_i_terminate_master_servers(step):
+@step(u'When I terminate main servers')
+def when_i_terminate_main_servers(step):
     world.server1.go_down()
     world.server2.go_down()
  

@@ -93,7 +93,7 @@ class RabbitMQAPI(BehaviorAPI):
     @rpc.command_method
     def reset_password(self, new_password=None):
         """
-        Resets password for RabbitMQ user 'scalr_master'.
+        Resets password for RabbitMQ user 'scalr_main'.
 
         :param new_password: New password. If not provided, 10-character string will be generated.
         :type new_password: str
@@ -104,7 +104,7 @@ class RabbitMQAPI(BehaviorAPI):
         """
         if not new_password:
             new_password = pwgen(10)
-        self.rabbitmq.check_master_user(new_password)
+        self.rabbitmq.check_main_user(new_password)
         return new_password
 
     @classmethod

@@ -153,8 +153,8 @@ class RabbitMQ(object):
     def check_scalr_user(self, password):
         self._check_admin_user(SCALR_USERNAME, password)
 
-    def check_master_user(self, password):
-        self._check_admin_user('scalr_master', password)
+    def check_main_user(self, password):
+        self._check_admin_user('scalr_main', password)
 
     def add_user(self, username, password, is_admin=False):
         system2((RABBITMQCTL, 'add_user', username, password), logger=self._logger)

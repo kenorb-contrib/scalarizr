@@ -360,8 +360,8 @@ class RabbitMQHandler(ServiceCtlHandler):
         scalr_user_password = __rabbitmq__['password']
         self.rabbitmq.check_scalr_user(scalr_user_password)
 
-        master_user_password = __rabbitmq__['password']
-        self.rabbitmq.check_master_user(master_user_password)
+        main_user_password = __rabbitmq__['password']
+        self.rabbitmq.check_main_user(main_user_password)
 
         cluster_nodes = self.rabbitmq.cluster_nodes()
         if not all([node in cluster_nodes for node in nodes_to_cluster_with]):

@@ -391,9 +391,9 @@ def server_is_removed_from_the_backend(step):
     assert not server_name in world.api.cfg.backends["scalr:backend:tcp:27000"]['server']
  
  
-@step("i have a proxy to two roles: master and backup")
+@step("i have a proxy to two roles: main and backup")
 def i_have_a_proxy_to_two_roles(step):
-    step.given("i have a role master")
+    step.given("i have a role main")
     step.given("i have a backup role backup")
     step.given("i add proxy")
  
@@ -405,11 +405,11 @@ def i_have_a_proxy_to_two_servers(step):
     step.given("i add proxy")
  
  
-@step("i terminate master servers")
-def i_terminate_master_servers(step):
-    master_role = world.roles["master"]
+@step("i terminate main servers")
+def i_terminate_main_servers(step):
+    main_role = world.roles["main"]
  
-    for server in master_role.servers:
+    for server in main_role.servers:
         world.api.remove_server({
             'port': server.address[1],
             'host': server.address[0],

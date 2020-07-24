@@ -556,7 +556,7 @@ class QueryEnvResult(object):
 
 class RoleHost(QueryEnvResult):
     index = None
-    replication_master = False
+    replication_main = False
     internal_ip = None
     external_ip = None
     shard_index = None
@@ -564,7 +564,7 @@ class RoleHost(QueryEnvResult):
     status = None
     cloud_location = None
 
-    def __init__(self, index=None, replication_master=False, internal_ip=None, external_ip=None,
+    def __init__(self, index=None, replication_main=False, internal_ip=None, external_ip=None,
                  shard_index=None, replica_set_index=None, status=None, cloud_location=None):
         self.internal_ip = internal_ip
         self.external_ip = external_ip
@@ -572,8 +572,8 @@ class RoleHost(QueryEnvResult):
         self.cloud_location = cloud_location
         if index:
             self.index = int(index)
-        if replication_master:
-            self.replication_master = bool(int(replication_master))
+        if replication_main:
+            self.replication_main = bool(int(replication_main))
         if shard_index:
             self.shard_index = int(shard_index)
         if replica_set_index:
@@ -581,7 +581,7 @@ class RoleHost(QueryEnvResult):
 
     def __repr__(self):
         return "index = " + str(self.index) \
-            + "; replication_master = " + str(self.replication_master) \
+            + "; replication_main = " + str(self.replication_main) \
             + "; internal_ip = " + str(self.internal_ip) \
             + "; external_ip = " + str(self.external_ip) \
             + "; shard_index = " + str(self.shard_index) \

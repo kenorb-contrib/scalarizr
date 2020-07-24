@@ -452,7 +452,7 @@ class AptManager(AbstractPackageManager):
             self.plain = True
         elif len(parts) == 3:
             # APT-pool repo
-            # "http://stridercd.scalr-labs.com/apt/develop master main"
+            # "http://stridercd.scalr-labs.com/apt/develop main main"
             self.plain = False
             self.component = parts[2]
         else:

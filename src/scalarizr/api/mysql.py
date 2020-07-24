@@ -180,23 +180,23 @@ class MySQLAPI(BehaviorAPI):
     @rpc.command_method
     def reset_password(self, new_password=None):
         """
-        Reset password for MySQL user 'scalr_master'. Return new password
+        Reset password for MySQL user 'scalr_main'. Return new password
         """
         if not new_password:
             new_password = pwgen(20)
         mysql_cli = mysql_svc.MySQLClient(__mysql__['root_user'],
                                           __mysql__['root_password'])
-        master_user = __mysql__['master_user']
+        main_user = __mysql__['main_user']
 
-        if mysql_cli.user_exists(master_user, 'localhost'):
-            mysql_cli.set_user_password(master_user, 'localhost', new_password)
+        if mysql_cli.user_exists(main_user, 'localhost'):
+            mysql_cli.set_user_password(main_user, 'localhost', new_password)
         else:
-            mysql_cli.create_user(master_user, 'localhost', new_password)
+            mysql_cli.create_user(main_user, 'localhost', new_password)
 
-        if mysql_cli.user_exists(master_user, '%'):
-            mysql_cli.set_user_password(master_user, '%', new_password)
+        if mysql_cli.user_exists(main_user, '%'):
+            mysql_cli.set_user_password(main_user, '%', new_password)
         else:
-            mysql_cli.create_user(master_user, '%', new_password)
+            mysql_cli.create_user(main_user, '%', new_password)
 
         mysql_cli.flush_privileges()
 
@@ -212,23 +212,23 @@ class MySQLAPI(BehaviorAPI):
         """
         mysql_cli = mysql_svc.MySQLClient(__mysql__['root_user'],
                                           __mysql__['root_password'])
-        if int(__mysql__['replication_master']):
-            master_status = mysql_cli.master_status()
-            result = {'master': {'status': 'up',
-                                 'log_file': master_status[0],
-                                 'log_pos': master_status[1]}}
+        if int(__mysql__['replication_main']):
+            main_status = mysql_cli.main_status()
+            result = {'main': {'status': 'up',
+                                 'log_file': main_status[0],
+                                 'log_pos': main_status[1]}}
             return result
         else:
             try:
-                slave_status = mysql_cli.slave_status()
-                slave_status = dict(zip(map(string.lower, slave_status.keys()),
-                                        slave_status.values()))
-                slave_running = slave_status['slave_io_running'] == 'Yes' and \
-                    slave_status['slave_sql_running'] == 'Yes'
-                slave_status['status'] = 'up' if slave_running else 'down'
-                return {'slave': slave_status}
+                subordinate_status = mysql_cli.subordinate_status()
+                subordinate_status = dict(zip(map(string.lower, subordinate_status.keys()),
+                                        subordinate_status.values()))
+                subordinate_running = subordinate_status['subordinate_io_running'] == 'Yes' and \
+                    subordinate_status['subordinate_sql_running'] == 'Yes'
+                subordinate_status['status'] = 'up' if subordinate_running else 'down'
+                return {'subordinate': subordinate_status}
             except ServiceError:
-                return {'slave': {'status': 'down'}}
+                return {'subordinate': {'status': 'down'}}
 
 
     @rpc.command_method
@@ -240,7 +240,7 @@ class MySQLAPI(BehaviorAPI):
             try:
                 purpose = '{0}-{1}'.format(
                         __mysql__.behavior, 
-                        'master' if int(__mysql__.replication_master) == 1 else 'slave')
+                        'main' if int(__mysql__.replication_main) == 1 else 'subordinate')
                 backup = {
                     'type': 'mysqldump',
                     'cloudfs_dir': __node__.platform.scalrfs.backups('mysql'),

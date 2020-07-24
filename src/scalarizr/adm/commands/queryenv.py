@@ -121,7 +121,7 @@ class Queryenv(Command):
            'index',
            'internal-ip',
            'external-ip',
-           'replication-master']
+           'replication-main']
         table_data = []
         for d in out:
             behaviour = ', '.join(d.behaviour)
@@ -132,7 +132,7 @@ class Queryenv(Command):
                                    str(host.index),
                                    host.internal_ip,
                                    host.external_ip,
-                                   str(host.replication_master)])
+                                   str(host.replication_main)])
         print make_table(table_data, headers)
 
     def _display_list_virtual_hosts(self, out):

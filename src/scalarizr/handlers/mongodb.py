@@ -98,19 +98,19 @@ class MongoDBMessages:
     = HOST_INIT_RESPONSE =
     @ivar MongoDB=dict(
             key_file                                 A key file with at least 6 Base64 characters
-            volume_config                   Master storage configuration                    (on master)
-            snapshot_config                 Master storage snapshot                          (both)
+            volume_config                   Main storage configuration                    (on main)
+            snapshot_config                 Main storage snapshot                          (both)
     )
 
     = HOST_UP =
     @ivar mysql=dict(
-            root_password:                   'scalr' user password                                    (on master)
-            repl_password:                   'scalr_repl' user password                             (on master)
-            stat_password:                   'scalr_stat' user password                             (on master)
-            log_file:                                Binary log file                                                        (on master)
-            log_pos:                                 Binary log file position                               (on master)
+            root_password:                   'scalr' user password                                    (on main)
+            repl_password:                   'scalr_repl' user password                             (on main)
+            stat_password:                   'scalr_stat' user password                             (on main)
+            log_file:                                Binary log file                                                        (on main)
+            log_pos:                                 Binary log file position                               (on main)
             volume_config:                  Current storage configuration                   (both)
-            snapshot_config:                Master storage snapshot                                 (on master)
+            snapshot_config:                Main storage snapshot                                 (on main)
     )
     """
 
@@ -195,15 +195,15 @@ class MongoDBHandler(ServiceCtlHandler):
 
                 '%s_data_bundle' % BEHAVIOUR,
 
-                # @param host: New master hostname
-                'before_%s_change_master' % BEHAVIOUR,
+                # @param host: New main hostname
+                'before_%s_change_main' % BEHAVIOUR,
 
-                # @param host: New master hostname
-                '%s_change_master' % BEHAVIOUR,
+                # @param host: New main hostname
+                '%s_change_main' % BEHAVIOUR,
 
-                'before_slave_promote_to_master',
+                'before_subordinate_promote_to_main',
 
-                'slave_promote_to_master'
+                'subordinate_promote_to_main'
         )
 
         self.api = mongodb_api.MongoDBAPI()
@@ -315,7 +315,7 @@ class MongoDBHandler(ServiceCtlHandler):
 
     def on_before_host_up(self, hostup_msg):
         """
-        Check that replication is up in both master and slave cases
+        Check that replication is up in both main and subordinate cases
         @type hostup_msg: scalarizr.messaging.Message
         @param hostup_msg: HostUp message
         """
@@ -357,11 +357,11 @@ class MongoDBHandler(ServiceCtlHandler):
         rs_name = RS_NAME_TPL % self.shard_index
 
         if first_in_rs:
-            log.info('Initialize Master')
-            self._init_master(hostup_msg, rs_name)
+            log.info('Initialize Main')
+            self._init_main(hostup_msg, rs_name)
         else:
-            log.info('Initialize Slave')
-            self._init_slave(hostup_msg, rs_name)
+            log.info('Initialize Subordinate')
+            self._init_subordinate(hostup_msg, rs_name)
 
         possible_self_arbiter = "%s:%s" % (self.hostname, mongo_svc.ARBITER_DEFAULT_PORT)
         if possible_self_arbiter in self.mongodb.arbiters:
@@ -572,13 +572,13 @@ class MongoDBHandler(ServiceCtlHandler):
             wait_until(lambda: self.mongodb.primary_host, timeout=180,
                     start_text='Wait for primary node in replica set', logger=self._logger)
 
-            is_master = self.mongodb.is_replication_master
+            is_main = self.mongodb.is_replication_main
 
-            if is_master and self.shard_index == shard_idx:
+            if is_main and self.shard_index == shard_idx:
 
                 nodename = '%s:%s' % (hostname, mongo_svc.REPLICA_DEFAULT_PORT)
                 if nodename not in self.mongodb.replicas:
-                    self.mongodb.register_slave(hostname, mongo_svc.REPLICA_DEFAULT_PORT)
+                    self.mongodb.register_subordinate(hostname, mongo_svc.REPLICA_DEFAULT_PORT)
                 else:
                     self._logger.warning('Host %s is already in replica set.' % nodename)
 
@@ -661,7 +661,7 @@ class MongoDBHandler(ServiceCtlHandler):
                 self._logger.debug('Flushing router configuration')
                 self.mongodb.router_cli.flush_router_cfg()
 
-            if self.mongodb.is_replication_master and \
+            if self.mongodb.is_replication_main and \
                                                                             self.shard_index == new_host_shard_idx:
                 r = len(self.mongodb.replicas)
                 a = len(self.mongodb.arbiters)
@@ -672,7 +672,7 @@ class MongoDBHandler(ServiceCtlHandler):
                     for arbiter in self.mongodb.arbiters:
                         arb_host, arb_port = arbiter.split(':')
                         arb_port = int(arb_port)
-                        self.mongodb.unregister_slave(arb_host, arb_port)
+                        self.mongodb.unregister_subordinate(arb_host, arb_port)
                     self.mongodb.stop_arbiter()
             else:
                 if len(self.mongodb.replicas) % 2 != 0:
@@ -745,17 +745,17 @@ class MongoDBHandler(ServiceCtlHandler):
             self._logger.debug("Got %s from node %s but ip address doesn't match.", message.name, down_node_host)
             return
 
-        is_master = self.mongodb.is_replication_master
+        is_main = self.mongodb.is_replication_main
 
-        if not is_master and len(self.mongodb.replicas) == 2:
+        if not is_main and len(self.mongodb.replicas) == 2:
             local_ip = self._platform.get_private_ip()
             possible_self_arbiter = "%s:%s" % (local_ip, mongo_svc.ARBITER_DEFAULT_PORT)
             try:
                 if possible_self_arbiter in self.mongodb.arbiters:
                     """ Start arbiter if it's not running """
                     self.mongodb.arbiter.start()
-                    """ Wait until we become master """
-                    wait_until(lambda: self.mongodb.is_replication_master, timeout=180)
+                    """ Wait until we become main """
+                    wait_until(lambda: self.mongodb.is_replication_main, timeout=180)
                 else:
                     raise Exception('Arbiter not found')
             except:
@@ -765,14 +765,14 @@ class MongoDBHandler(ServiceCtlHandler):
                 rs_cfg['members'] = [m for m in rs_cfg['members'] if m['host'] == nodename]
                 self.mongodb.cli.rs_reconfig(rs_cfg, force=True)
                 try:
-                    wait_until(lambda: self.mongodb.is_replication_master, timeout=30)
+                    wait_until(lambda: self.mongodb.is_replication_main, timeout=30)
                 except:
                     """ Looks like mongo stuck in secondary state (syncingTo dead node)
                             Restart should fix this
                     """
                     if "seconds reached" in str(sys.exc_info()[1]):
                         self.mongodb.mongod.restart(reason="Reconfiguring replica set")
-                        wait_until(lambda: self.mongodb.is_replication_master, timeout=30)
+                        wait_until(lambda: self.mongodb.is_replication_main, timeout=30)
                     else:
                         raise
         else:
@@ -780,15 +780,15 @@ class MongoDBHandler(ServiceCtlHandler):
                              start_text='Wait for primary node in replica set', logger=self._logger)
 
 
-            if self.mongodb.is_replication_master:
+            if self.mongodb.is_replication_main:
 
                 """ Remove host from replica set"""
-                self.mongodb.unregister_slave(down_node_host)
+                self.mongodb.unregister_subordinate(down_node_host)
 
                 """ If arbiter was running on the node - unregister it """
                 possible_arbiter = "%s:%s" % (down_node_host, mongo_svc.ARBITER_DEFAULT_PORT)
                 if possible_arbiter in self.mongodb.arbiters:
-                    self.mongodb.unregister_slave(down_node_host, mongo_svc.ARBITER_DEFAULT_PORT)
+                    self.mongodb.unregister_subordinate(down_node_host, mongo_svc.ARBITER_DEFAULT_PORT)
 
                 """ Start arbiter if necessary """
                 if len(self.mongodb.replicas) % 2 == 0:
@@ -798,12 +798,12 @@ class MongoDBHandler(ServiceCtlHandler):
                     for arbiter in self.mongodb.arbiters:
                         arb_host, arb_port = arbiter.split(':')
                         arb_port = int(arb_port)
-                        self.mongodb.unregister_slave(arb_host, arb_port)
+                        self.mongodb.unregister_subordinate(arb_host, arb_port)
                     self.mongodb.stop_arbiter()
 
             else:
                 """ Get all replicas except down one,
-                        since we don't know if master already removed
+                        since we don't know if main already removed
                         node from replica set
                 """
                 replicas = [r for r in self.mongodb.replicas if r != down_node_name]
@@ -862,7 +862,7 @@ class MongoDBHandler(ServiceCtlHandler):
             STATE[CLUSTER_STATE_KEY] = MongoDBClusterStates.TERMINATING
             storage_vol = __mongodb__['volume']
 
-            if self.mongodb.is_replication_master:
+            if self.mongodb.is_replication_main:
                 self.mongodb.cli.step_down(180, force=True)
             self.mongodb.stop_arbiter()
             self.mongodb.stop_config_server()
@@ -938,8 +938,8 @@ class MongoDBHandler(ServiceCtlHandler):
 
 
     def _create_data_bundle(self):
-        if not self.mongodb.is_replication_master:
-            self._logger.debug('Not a master. Skipping data bundle')
+        if not self.mongodb.is_replication_main:
+            self._logger.debug('Not a main. Skipping data bundle')
             return
 
         try:
@@ -974,9 +974,9 @@ class MongoDBHandler(ServiceCtlHandler):
             self.mongodb.router_cli.start_balancer()
 
 
-    def _init_master(self, message, rs_name):
+    def _init_main(self, message, rs_name):
         """
-        Initialize mongodb master
+        Initialize mongodb main
         @type message: scalarizr.messaging.Message
         @param message: HostUp message
         """
@@ -1005,14 +1005,14 @@ class MongoDBHandler(ServiceCtlHandler):
 
             rs_cfg['version'] += 10
             self.mongodb.cli.rs_reconfig(rs_cfg, force=True)
-            wait_until(lambda: self.mongodb.is_replication_master, timeout=180)
+            wait_until(lambda: self.mongodb.is_replication_main, timeout=180)
 
         self.mongodb.cli.create_or_update_admin_user(mongo_svc.SCALR_USER, self.scalr_password)
         self.mongodb.mongod.stop("Terminating mongod instance to run it with --auth option")
         self.mongodb.auth = True
         self.mongodb.start_shardsvr()
         self.mongodb.cli.auth(mongo_svc.SCALR_USER, self.scalr_password)
-        wait_until(lambda: self.mongodb.is_replication_master, sleep=5, logger=self._logger,
+        wait_until(lambda: self.mongodb.is_replication_main, sleep=5, logger=self._logger,
                                                 timeout=120, start_text='Wait until node becomes replication primary')
         # Create snapshot
         #self.mongodb.cli.sync(lock=True)
@@ -1054,9 +1054,9 @@ class MongoDBHandler(ServiceCtlHandler):
         __mongodb__['volume'] = storage_volume
 
 
-    def _init_slave(self, message, rs_name):
+    def _init_subordinate(self, message, rs_name):
         """
-        Initialize mongodb slave
+        Initialize mongodb subordinate
         @type message: scalarizr.messaging.Message
         @param message: HostUp message
         """
@@ -1168,7 +1168,7 @@ class MongoDBHandler(ServiceCtlHandler):
                         cdb_result_received = True
                         try:
                             if msg.status == 'ok':
-                                self._logger.info('Received data bundle from master node.')
+                                self._logger.info('Received data bundle from main node.')
                                 self.mongodb.mongod.stop()
 
                                 storage_vol.detach()
@@ -1237,14 +1237,14 @@ class MongoDBHandler(ServiceCtlHandler):
             STATE[CLUSTER_STATE_KEY] = MongoDBClusterStates.TERMINATING
             if not self.mongodb.mongod.is_running:
                 self.mongodb.start_shardsvr()
-            is_replication_master = self.mongodb.is_replication_master
+            is_replication_main = self.mongodb.is_replication_main
             self.mongodb.mongod.stop()
             self.mongodb.stop_config_server()
 
             msg_body = dict(status='ok',
                                             shard_index=self.shard_index,
                                             replica_set_index=self.rs_id,
-                                            is_master=int(is_replication_master))
+                                            is_main=int(is_replication_main))
         except:
             msg_body = dict(status='error',
                                             last_error=str(sys.exc_info()[1]),
@@ -1656,7 +1656,7 @@ class ClusterTerminateWatcher(threading.Thread):
                             if 'last_error' in self.full_status[shard_id][rs_id]:
                                 del self.full_status[shard_id][rs_id]['last_error']
                             self.full_status[shard_id][rs_id]['status'] = TerminationState.TERMINATED
-                            self.full_status[shard_id][rs_id]['is_master'] = int(msg.is_master)
+                            self.full_status[shard_id][rs_id]['is_main'] = int(msg.is_main)
                         else:
                             self.full_status[shard_id][rs_id]['status'] = TerminationState.FAILED
                             self.full_status[shard_id][rs_id]['last_error'] = msg.last_error
