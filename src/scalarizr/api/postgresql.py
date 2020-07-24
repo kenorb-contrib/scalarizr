@@ -136,7 +136,7 @@ class PostgreSQLAPI(BehaviorAPI):
     @rpc.command_method
     def reset_password(self, new_password=None):
         """
-        Resets password for PostgreSQL user 'scalr_master'.
+        Resets password for PostgreSQL user 'scalr_main'.
 
         :returns: New password
         :rtype: str
@@ -144,12 +144,12 @@ class PostgreSQLAPI(BehaviorAPI):
         if not new_password:
             new_password = pwgen(10)
         pg = postgresql_svc.PostgreSql()
-        if pg.master_user.exists():
-            pg.master_user.change_role_password(new_password)
-            pg.master_user.change_system_password(new_password)
+        if pg.main_user.exists():
+            pg.main_user.change_role_password(new_password)
+            pg.main_user.change_system_password(new_password)
         else:
-            pg.create_linux_user(pg.master_user.name, new_password)
-            pg.create_pg_role(pg.master_user.name,
+            pg.create_linux_user(pg.main_user.name, new_password)
+            pg.create_pg_role(pg.main_user.name,
                                 new_password,
                                 super=True,
                                 force=False)
@@ -196,17 +196,17 @@ class PostgreSQLAPI(BehaviorAPI):
 
         Examples::
 
-            On master:
+            On main:
 
-            {'master': {'status': 'up'}}
+            {'main': {'status': 'up'}}
 
-            On broken slave:
+            On broken subordinate:
 
-            {'slave': {'status': 'down','error': <errmsg>}}
+            {'subordinate': {'status': 'down','error': <errmsg>}}
 
-            On normal slave:
+            On normal subordinate:
 
-            {'slave': {'status': 'up', 'xlog_delay': <xlog_delay>}}
+            {'subordinate': {'status': 'up', 'xlog_delay': <xlog_delay>}}
 
         """
         psql = postgresql_svc.PSQL()
@@ -219,14 +219,14 @@ class PostgreSQLAPI(BehaviorAPI):
                 raise e
         query_result = self._parse_query_out(query_out)
 
-        is_master = int(__postgresql__[OPT_REPLICATION_MASTER])
+        is_main = int(__postgresql__[OPT_REPLICATION_MASTER])
 
         if query_result['xlog_delay'] is None:
-            if is_master:
-                return {'master': {'status': 'up'}}
-            return {'slave': {'status': 'down',
+            if is_main:
+                return {'main': {'status': 'up'}}
+            return {'subordinate': {'status': 'down',
                               'error': query_result['error']}}
-        return {'slave': {'status': 'up',
+        return {'subordinate': {'status': 'up',
                           'xlog_delay': query_result['xlog_delay']}}
 
 
@@ -321,7 +321,7 @@ class PostgreSQLAPI(BehaviorAPI):
 
                 cloud_storage_path = __node__.platform.scalrfs.backups(BEHAVIOUR)
 
-                suffix = 'master' if int(__postgresql__[OPT_REPLICATION_MASTER]) else 'slave'
+                suffix = 'main' if int(__postgresql__[OPT_REPLICATION_MASTER]) else 'subordinate'
                 backup_tags = {'scalr-purpose': 'postgresql-%s' % suffix}
 
                 LOG.info("Uploading backup to %s with tags %s" % (cloud_storage_path, backup_tags))

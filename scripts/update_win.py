@@ -56,8 +56,8 @@ class ScalarizrDevTools(win32serviceutil.ServiceFramework):
                 branch = branch.replace('/','-').replace('.','').strip()
             except:
                 e = sys.exc_info()[1]
-                logger.debug('Could not obtain userdata: %s. Using master branch' % e)
-                branch = 'master'
+                logger.debug('Could not obtain userdata: %s. Using main branch' % e)
+                branch = 'main'
  
             logger.info('Detecting architecture')
             arch = platform.uname()[4]

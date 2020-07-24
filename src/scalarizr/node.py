@@ -181,7 +181,7 @@ class RedisIni(Ini):
     def __getitem__(self, key):
         try:
             value = super(RedisIni, self).__getitem__(key)
-            if key in ('use_password', 'replication_master',):
+            if key in ('use_password', 'replication_main',):
                 if value in (None, ''):
                     value = True
                 else:
@@ -190,7 +190,7 @@ class RedisIni(Ini):
             if 'persistence_type' == key:
                 value = 'snapshotting'
                 self.__setitem__(key, value)
-            elif 'master_password' == key:
+            elif 'main_password' == key:
                 value = None
             else:
                 raise
@@ -376,7 +376,7 @@ for behavior in ('mysql', 'mysql2', 'percona', 'mariadb'):
             'volume,volume_config': 
                             Json('%s/storage/%s.json' % (private_dir, 'mysql'), 
                                     'scalarizr.storage2.volume'),
-            'root_password,repl_password,stat_password,log_file,log_pos,replication_master': 
+            'root_password,repl_password,stat_password,log_file,log_pos,replication_main': 
                             Ini('%s/%s.ini' % (private_dir, behavior), section),
             'mysqldump_options': 
                             Ini('%s/%s.ini' % (public_dir, behavior), section)
@@ -385,7 +385,7 @@ for behavior in ('mysql', 'mysql2', 'percona', 'mariadb'):
 node['redis'] = Compound({
     'volume,volume_config': Json(
         '%s/storage/%s.json' % (private_dir, 'redis'), 'scalarizr.storage2.volume'),
-    'replication_master,persistence_type,use_password,master_password': RedisIni(
+    'replication_main,persistence_type,use_password,main_password': RedisIni(
                     '%s/%s.ini' % (private_dir, 'redis'), 'redis')
 })
 
@@ -401,7 +401,7 @@ node['rabbitmq'] = Compound({
 node['postgresql'] = Compound({
 'volume,volume_config': Json('%s/storage/%s.json' % (private_dir, 'postgresql'),
         'scalarizr.storage2.volume'),
-'replication_master,pg_version,scalr_password,root_password, root_user': Ini(
+'replication_main,pg_version,scalr_password,root_password, root_user': Ini(
         '%s/%s.ini' % (private_dir, 'postgresql'), 'postgresql')
 })
 

@@ -13,9 +13,9 @@ class TestCompound(object):
         store = mock.MagicMock(spec=node.Store)
         store.__getitem__.return_value = 'aaa'
  
-        master = node.Compound({'plain_key': store})
+        main = node.Compound({'plain_key': store})
  
-        assert master['plain_key'] == 'aaa'
+        assert main['plain_key'] == 'aaa'
         store.__getitem__.assert_called_with('plain_key')
  
  
@@ -27,24 +27,24 @@ class TestCompound(object):
         store = mock.MagicMock(spec=node.Store)
         store.__getitem__.side_effect = lambda key: values[key]
  
-        master = node.Compound({'server_id,platform': store})
+        main = node.Compound({'server_id,platform': store})
  
-        eq_(master['server_id'], '14593')
-        eq_(master['platform'], 'ec2')
+        eq_(main['server_id'], '14593')
+        eq_(main['platform'], 'ec2')
  
     def test_set_enum_key(self):
         store = mock.MagicMock(spec=node.Store)
-        master = node.Compound({'mike,andru,luka': store})
+        main = node.Compound({'mike,andru,luka': store})
  
-        master['mike'] = 'story'
+        main['mike'] = 'story'
         store.__setitem__.assert_called_with('mike', 'story')
  
  
     def test_set_undefined_key(self):
-        master = node.Compound()
+        main = node.Compound()
  
-        master['key1'] = 'ooo'
-        assert master['key1'] == 'ooo'
+        main['key1'] = 'ooo'
+        assert main['key1'] == 'ooo'
  
  
     def test_update(self):
@@ -54,14 +54,14 @@ class TestCompound(object):
                 'sub_1,sub_2': sub
         })
         mysql.update({
-                'replication_master': '1',
+                'replication_main': '1',
                 'sub_1': 'a value',
                 'sub_2': 'not bad'
         })
  
  
-        assert 'replication_master' in mysql
-        assert mysql['replication_master'] == '1'
+        assert 'replication_main' in mysql
+        assert mysql['replication_main'] == '1'
         sub.__setitem__.call_args_list[0] = mock.call(mysql, 'sub_1', 'a value')
         sub.__setitem__.call_args_list[1] = mock.call(mysql, 'sub_2', 'not bad')
  

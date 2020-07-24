@@ -149,9 +149,9 @@ class RedisAPI(BehaviorAPI):
             raise AssertionError('Number of ports must be equal to number of passwords')
         if num and ports and num != len(ports):
             raise AssertionError('When ports range is passed its length must be equal to num parameter')
-        if not __redis__["replication_master"]:
+        if not __redis__["replication_main"]:
             if not passwords or not ports:
-                raise AssertionError('ports and passwords are required to launch processes on redis slave')
+                raise AssertionError('ports and passwords are required to launch processes on redis subordinate')
         available_ports = self.available_ports
         if num > len(available_ports):
             raise AssertionError('Cannot launch %s new processes: Ports available: %s' % (num, str(available_ports)))
@@ -198,7 +198,7 @@ class RedisAPI(BehaviorAPI):
 
         for port, password in zip(ports, passwords or [None for port in ports]):
             log.info('Launch Redis %s on port %s',
-                'Master' if __redis__["replication_master"] else 'Slave', port)
+                'Main' if __redis__["replication_main"] else 'Subordinate', port)
 
             if iptables.enabled():
                 iptables.FIREWALL.ensure({
@@ -209,10 +209,10 @@ class RedisAPI(BehaviorAPI):
             redis_process = redis_service.Redis(port, password)
 
             if not redis_process.service.running:
-                if __redis__["replication_master"]:
-                    current_password = redis_process.init_master(STORAGE_PATH)
+                if __redis__["replication_main"]:
+                    current_password = redis_process.init_main(STORAGE_PATH)
                 else:
-                    current_password = redis_process.init_slave(STORAGE_PATH, primary_ip, port)
+                    current_password = redis_process.init_subordinate(STORAGE_PATH, primary_ip, port)
                 new_passwords.append(current_password)
                 new_ports.append(port)
                 log.debug('Redis process has been launched on port %s with password %s' % (port, current_password))
@@ -227,7 +227,7 @@ class RedisAPI(BehaviorAPI):
         freed_ports = []
         for port in ports:
             log.info('Shutdown Redis %s on port %s' % (
-                'Master' if __redis__["replication_master"] else 'Slave', port))
+                'Main' if __redis__["replication_main"] else 'Subordinate', port))
 
             instance = redis_service.Redis(port=port)
             if instance.service.running:
@@ -303,18 +303,18 @@ class RedisAPI(BehaviorAPI):
         return __redis__["persistence_type"]
 
     def get_primary_ip(self):
-        master_host = None
-        LOG.info("Requesting master server")
-        while not master_host:
+        main_host = None
+        LOG.info("Requesting main server")
+        while not main_host:
             try:
-                master_host = list(
+                main_host = list(
                     host for host in self._queryenv.list_roles(behaviour=BEHAVIOUR)[0].hosts
-                    if host.replication_master)[0]
+                    if host.replication_main)[0]
             except IndexError:
-                LOG.debug("QueryEnv responded with no %s master. " % BEHAVIOUR +
+                LOG.debug("QueryEnv responded with no %s main. " % BEHAVIOUR +
                     "Waiting %d seconds before the next attempt" % 5)
                 time.sleep(5)
-        host = master_host.internal_ip or master_host.external_ip
+        host = main_host.internal_ip or main_host.external_ip
         LOG.debug('primary IP: %s', host)
         return host
 
@@ -327,14 +327,14 @@ class RedisAPI(BehaviorAPI):
         redis_conf = redis_service.RedisConf.find(port=port)
         redis_conf.requirepass = new_password
 
-        if redis_conf.slaveof:
-            redis_conf.masterauth = new_password
+        if redis_conf.subordinateof:
+            redis_conf.mainauth = new_password
 
         redis_wrapper = redis_service.Redis(port=port, password=new_password)
         redis_wrapper.service.reload()
 
         if int(port) == __redis__['defaults']['port']:
-            __redis__["master_password"] = new_password
+            __redis__["main_password"] = new_password
 
         return new_password
 
@@ -348,23 +348,23 @@ class RedisAPI(BehaviorAPI):
         """
         ri = redis_service.RedisInstances()
 
-        if __redis__["replication_master"]:
-            masters = {}
+        if __redis__["replication_main"]:
+            mains = {}
             for port in ri.ports:
-                masters[port] = {'status': 'up'}
-            return {'masters': masters}
+                mains[port] = {'status': 'up'}
+            return {'mains': mains}
 
-        slaves = {}
+        subordinates = {}
         for redis_process in ri.instances:
             repl_data = {}
             for key, val in redis_process.redis_cli.info.items():
-                if key.startswith('master'):
+                if key.startswith('main'):
                     repl_data[key] = val
-            if 'master_link_status' in repl_data:
-                repl_data['status'] = repl_data['master_link_status']
-            slaves[redis_process.port] = repl_data
+            if 'main_link_status' in repl_data:
+                repl_data['status'] = repl_data['main_link_status']
+            subordinates[redis_process.port] = repl_data
 
-        return {'slaves': slaves}
+        return {'subordinates': subordinates}
 
     @rpc.command_method
     def create_databundle(self, async=True):

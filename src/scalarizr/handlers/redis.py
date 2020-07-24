@@ -70,8 +70,8 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
     redis_instances = None
 
     @property
-    def is_replication_master(self):
-        return __redis__["replication_master"]
+    def is_replication_main(self):
+        return __redis__["replication_main"]
 
 
     @property
@@ -104,10 +104,10 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
         if BEHAVIOUR in hir_message.body:
 
             steps = [self._step_accept_scalr_conf, self._step_create_storage]
-            if hir_message.body[BEHAVIOUR]['replication_master'] == '1':
-                steps += [self._step_init_master]
+            if hir_message.body[BEHAVIOUR]['replication_main'] == '1':
+                steps += [self._step_init_main]
             else:
-                steps += [self._step_init_slave]
+                steps += [self._step_init_subordinate]
             steps += [self._step_collect_host_up_data]
 
             return {'before_host_up': [{
@@ -132,15 +132,15 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
 
                 '%s_data_bundle' % BEHAVIOUR,
 
-                # @param host: New master hostname
-                'before_%s_change_master' % BEHAVIOUR,
+                # @param host: New main hostname
+                'before_%s_change_main' % BEHAVIOUR,
 
-                # @param host: New master hostname
-                '%s_change_master' % BEHAVIOUR,
+                # @param host: New main hostname
+                '%s_change_main' % BEHAVIOUR,
 
-                'before_slave_promote_to_master',
+                'before_subordinate_promote_to_main',
 
-                'slave_promote_to_master'
+                'subordinate_promote_to_main'
         )
 
         self._phase_redis = 'Configure Redis'
@@ -151,10 +151,10 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
         self._step_accept_scalr_conf = 'Accept Scalr configuration'
         self._step_patch_conf = 'Patch configuration files'
         self._step_create_storage = 'Create storage'
-        self._step_init_master = 'Initialize Master'
-        self._step_init_slave = 'Initialize Slave'
+        self._step_init_main = 'Initialize Main'
+        self._step_init_subordinate = 'Initialize Subordinate'
         self._step_create_data_bundle = 'Create data bundle'
-        self._step_change_replication_master = 'Change replication Master'
+        self._step_change_replication_main = 'Change replication Main'
         self._step_collect_host_up_data = 'Collect HostUp data'
 
         self.on_reload()
@@ -346,13 +346,13 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
         @param message: HostUp message
         """
 
-        repl = 'master' if self.is_replication_master else 'slave'
+        repl = 'main' if self.is_replication_main else 'subordinate'
         message.redis = {}
 
-        if self.is_replication_master:
-            self._init_master(message)
+        if self.is_replication_main:
+            self._init_main(message)
         else:
-            self._init_slave(message)
+            self._init_subordinate(message)
 
         __redis__['volume'] = storage2.volume(__redis__['volume'])
 
@@ -381,7 +381,7 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
             self.redis_instances.save_all()
             LOG.info('Stopping %s service' % BEHAVIOUR)
             self.redis_instances.stop('Server will be terminated')
-            if not self.is_replication_master:
+            if not self.is_replication_main:
                 LOG.info('Destroying volume %s' % __redis__['volume'].id)
                 __redis__['volume'].destroy(remove_disks=True)
                 LOG.info('Volume %s was destroyed.' % __redis__['volume'].id)
@@ -393,23 +393,23 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
         self._redis_api.create_databundle()
 
 
-    def on_DbMsr_PromoteToMaster(self, message):
+    def on_DbMsr_PromoteToMain(self, message):
         """
-        Promote slave to master
+        Promote subordinate to main
         @type message: scalarizr.messaging.Message
-        @param message: redis_PromoteToMaster
+        @param message: redis_PromoteToMain
         """
 
         if message.db_type != BEHAVIOUR:
-            LOG.error('Wrong db_type in DbMsr_PromoteToMaster message: %s' % message.db_type)
+            LOG.error('Wrong db_type in DbMsr_PromoteToMain message: %s' % message.db_type)
             return
 
-        if self.is_replication_master:
-            LOG.warning('Cannot promote to master. Already master')
+        if self.is_replication_main:
+            LOG.warning('Cannot promote to main. Already main')
             return
-        bus.fire('before_slave_promote_to_master')
+        bus.fire('before_subordinate_promote_to_main')
 
-        master_storage_conf = message.body.get('volume_config')
+        main_storage_conf = message.body.get('volume_config')
         tx_complete = False
         old_vol                 = None
         new_storage_vol = None
@@ -420,29 +420,29 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
                 )
 
         try:
-            if master_storage_conf and master_storage_conf['type'] != 'eph':
+            if main_storage_conf and main_storage_conf['type'] != 'eph':
 
-                self.redis_instances.stop('Unplugging slave storage and then plugging master one')
+                self.redis_instances.stop('Unplugging subordinate storage and then plugging main one')
 
                 old_vol = storage2.volume(__redis__['volume'])
                 old_vol.detach(force=True)
-                new_storage_vol = storage2.volume(master_storage_conf)
+                new_storage_vol = storage2.volume(main_storage_conf)
                 new_storage_vol.ensure(mount=True)
                 __redis__['volume'] = new_storage_vol
 
-            self.redis_instances.init_as_masters(self._storage_path)
-            __redis__['replication_master'] = 1
+            self.redis_instances.init_as_mains(self._storage_path)
+            __redis__['replication_main'] = 1
             msg_data[BEHAVIOUR] = {'volume_config': dict(__redis__['volume'])}
             self.send_message(DbMsrMessages.DBMSR_PROMOTE_TO_MASTER_RESULT, msg_data)
 
             tx_complete = True
-            bus.fire('slave_promote_to_master')
+            bus.fire('subordinate_promote_to_main')
 
         except (Exception, BaseException), e:
             LOG.exception(e)
             if new_storage_vol and not new_storage_vol.detached:
                 new_storage_vol.detach(force=True)
-            # Get back slave storage
+            # Get back subordinate storage
             if old_vol:
                 old_vol.ensure(mount=True)
                 __redis__['volume'] = old_vol
@@ -457,48 +457,48 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
             self.redis_instances.start()
 
         if tx_complete and old_vol is not None:
-            # Delete slave EBS
+            # Delete subordinate EBS
             old_vol.destroy(remove_disks=True)
 
 
-    def on_DbMsr_NewMasterUp(self, message):
+    def on_DbMsr_NewMainUp(self, message):
         """
-        Switch replication to a new master server
+        Switch replication to a new main server
         @type message: scalarizr.messaging.Message
-        @param message:  DbMsr__NewMasterUp
+        @param message:  DbMsr__NewMainUp
         """
         if not message.body.has_key(BEHAVIOUR) or message.db_type != BEHAVIOUR:
-            raise HandlerError("DbMsr_NewMasterUp message for %s behaviour must have '%s' property and db_type '%s'" %
+            raise HandlerError("DbMsr_NewMainUp message for %s behaviour must have '%s' property and db_type '%s'" %
                                BEHAVIOUR, BEHAVIOUR, BEHAVIOUR)
 
-        if self.is_replication_master:
-            LOG.debug('Skipping NewMasterUp. My replication role is master')
+        if self.is_replication_main:
+            LOG.debug('Skipping NewMainUp. My replication role is main')
             return
 
         host = message.local_ip or message.remote_ip
-        LOG.info("Switching replication to a new %s master %s"% (BEHAVIOUR, host))
-        bus.fire('before_%s_change_master' % BEHAVIOUR, host=host)
+        LOG.info("Switching replication to a new %s main %s"% (BEHAVIOUR, host))
+        bus.fire('before_%s_change_main' % BEHAVIOUR, host=host)
 
-        self.redis_instances.init_as_slaves(self._storage_path, host)
+        self.redis_instances.init_as_subordinates(self._storage_path, host)
         self.redis_instances.wait_for_sync()
 
         LOG.debug("Replication switched")
-        bus.fire('%s_change_master' % BEHAVIOUR, host=host)
+        bus.fire('%s_change_main' % BEHAVIOUR, host=host)
 
 
     def on_DbMsr_CreateBackup(self, message):
         self._redis_api.create_backup()
 
 
-    def _init_master(self, message):
+    def _init_main(self, message):
         """
-        Initialize redis master
+        Initialize redis main
         @type message: scalarizr.messaging.Message
         @param message: HostUp message
         """
         log = bus.init_op.logger
 
-        log.info("Initializing %s master" % BEHAVIOUR)
+        log.info("Initializing %s main" % BEHAVIOUR)
         log.info('Create storage')
 
         # Plug storage
@@ -520,15 +520,15 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
                 __redis__['volume'].ensure(mount=True, mkfs=True)
                 LOG.debug('Redis volume config after ensure: %s', dict(__redis__['volume']))
 
-        log.info('Initialize Master')
+        log.info('Initialize Main')
         password = self.get_main_password()
 
-        self.redis_instances.init_as_masters(mpoint=self._storage_path)
+        self.redis_instances.init_as_mains(mpoint=self._storage_path)
 
         msg_data = dict()
         msg_data.update({
-            "replication_master": '1',
-            "master_password": password,
+            "replication_main": '1',
+            "main_password": password,
         })
 
         log.info('Collect HostUp data')
@@ -548,52 +548,52 @@ class RedisHandler(ServiceCtlHandler, handlers.FarmSecurityMixin):
 
 
     def get_main_password(self):
-        password = __redis__["master_password"]
+        password = __redis__["main_password"]
 
         if self.use_passwords and not password:
             password = cryptotool.pwgen(20)
-            __redis__["master_password"] = password
+            __redis__["main_password"] = password
 
         return password
 
-    def _get_master_host(self):
-        master_host = None
-        LOG.info("Requesting master server")
-        while not master_host:
+    def _get_main_host(self):
+        main_host = None
+        LOG.info("Requesting main server")
+        while not main_host:
             try:
-                master_host = list(host
+                main_host = list(host
                         for host in self._queryenv.list_roles(behaviour=BEHAVIOUR)[0].hosts
-                        if host.replication_master)[0]
+                        if host.replication_main)[0]
             except IndexError:
-                LOG.debug("QueryEnv respond with no %s master. " % BEHAVIOUR +
+                LOG.debug("QueryEnv respond with no %s main. " % BEHAVIOUR +
                           "Waiting %d seconds before the next attempt" % 5)
                 time.sleep(5)
-        return master_host
+        return main_host
 
 
-    def _init_slave(self, message):
+    def _init_subordinate(self, message):
         """
-        Initialize redis slave
+        Initialize redis subordinate
         @type message: scalarizr.messaging.Message
         @param message: HostUp message
         """
         log = bus.init_op.logger
-        log.info("Initializing %s slave" % BEHAVIOUR)
+        log.info("Initializing %s subordinate" % BEHAVIOUR)
 
         log.info('Create storage')
 
-        LOG.debug("Initializing slave storage")
+        LOG.debug("Initializing subordinate storage")
         __redis__['volume'].ensure(mount=True, mkfs=True)
 
-        log.info('Initialize Slave')
-        # Change replication master
-        master_host = self._get_master_host()
+        log.info('Initialize Subordinate')
+        # Change replication main
+        main_host = self._get_main_host()
 
-        LOG.debug("Master server obtained (local_ip: %s, public_ip: %s)",
-                master_host.internal_ip, master_host.external_ip)
+        LOG.debug("Main server obtained (local_ip: %s, public_ip: %s)",
+                main_host.internal_ip, main_host.external_ip)
 
-        host = master_host.internal_ip or master_host.external_ip
-        self.redis_instances.init_as_slaves(self._storage_path, host)
+        host = main_host.internal_ip or main_host.external_ip
+        self.redis_instances.init_as_subordinates(self._storage_path, host)
         self.redis_instances.wait_for_sync()
 
         log.info('Collect HostUp data')
@@ -625,5 +625,5 @@ class RedisCnfController(CnfController):
 
 
     def _after_apply_preset(self):
-        cli = redis.RedisCLI(__redis__["master_password"])
+        cli = redis.RedisCLI(__redis__["main_password"])
         cli.bgsave()
